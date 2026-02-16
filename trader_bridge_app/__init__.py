@@ -378,6 +378,22 @@ def _resolve_sqlite_path_for_exports():
     return str((Path(__file__).resolve().parents[1] / "db.sqlite3").resolve())
 
 
+def _extract_quantity_from_transaction_json(transaction_json_raw):
+    try:
+        parsed = json.loads(str(transaction_json_raw or ""))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return ""
+
+    if not isinstance(parsed, dict):
+        return ""
+
+    for key in ("quantity", "amount", "fill_amount", "transaction_amount"):
+        value = parsed.get(key)
+        if value is not None:
+            return value
+    return ""
+
+
 def custom_export_messages(players):
     yield [
         "trading_session_uuid",
@@ -458,6 +474,7 @@ def custom_export_transactions(players):
         "bid_trader_type",
         "ask_trader_uuid",
         "ask_trader_type",
+        "quantity",
         "price",
         "timestamp",
         "transaction_json",
@@ -511,6 +528,7 @@ def custom_export_transactions(players):
             pass
 
     for row in rows:
+        quantity = _extract_quantity_from_transaction_json(row["transaction_json"])
         yield [
             str(row["trading_session_uuid"] or ""),
             str(row["transaction_id"] or ""),
@@ -520,8 +538,82 @@ def custom_export_transactions(players):
             str(row["bid_trader_type"] or ""),
             str(row["ask_trader_uuid"] or ""),
             str(row["ask_trader_type"] or ""),
+            quantity,
             row["price"],
             str(row["timestamp"] or ""),
             str(row["transaction_json"] or ""),
+            row["created_ts"],
+        ]
+
+
+def custom_export_orders(players):
+    yield [
+        "trading_session_uuid",
+        "trader_uuid",
+        "trader_type",
+        "order_id",
+        "status",
+        "order_type",
+        "amount",
+        "price",
+        "timestamp",
+        "order_json",
+        "created_ts",
+    ]
+
+    sqlite_path = _resolve_sqlite_path_for_exports()
+    if not sqlite_path or not os.path.exists(sqlite_path):
+        _log("custom_export_orders skipped: sqlite path missing", sqlite_path=sqlite_path)
+        return
+
+    try:
+        conn = sqlite3.connect(sqlite_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT o.trading_session_uuid,
+                   o.trader_uuid,
+                   t.trader_type AS trader_type,
+                   o.order_id,
+                   o.status,
+                   o.order_type,
+                   o.amount,
+                   o.price,
+                   o.timestamp,
+                   o.order_json,
+                   o.created_ts
+            FROM trading_platform_orders AS o
+            LEFT JOIN trading_platform_traders AS t
+              ON t.trading_session_uuid = o.trading_session_uuid
+             AND t.trader_uuid = o.trader_uuid
+            ORDER BY o.id ASC
+            """
+        )
+        rows = cur.fetchall()
+    except sqlite3.OperationalError as exc:
+        _log("custom_export_orders skipped: trading_platform_orders unavailable", error=str(exc))
+        return
+    except Exception as exc:
+        _log("custom_export_orders failed", error=str(exc), traceback=traceback.format_exc())
+        return
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    for row in rows:
+        yield [
+            str(row["trading_session_uuid"] or ""),
+            str(row["trader_uuid"] or ""),
+            str(row["trader_type"] or ""),
+            str(row["order_id"] or ""),
+            str(row["status"] or ""),
+            str(row["order_type"] or ""),
+            row["amount"],
+            row["price"],
+            str(row["timestamp"] or ""),
+            str(row["order_json"] or ""),
             row["created_ts"],
         ]
