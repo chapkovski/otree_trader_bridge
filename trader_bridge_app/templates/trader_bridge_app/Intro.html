@@ -1,0 +1,16 @@
+{% extends "global/Page.html" %}
+{% load otree static %}
+
+{% block title %}
+Trading Session Intro
+{% endblock %}
+
+{% block content %}
+<p>
+This group will connect to an external trading backend.
+</p>
+<p>
+Once everyone arrives, oTree will create one trader account per participant and assign each participant a unique trader UUID.
+</p>
+{{ next_button }}
+{% endblock %}

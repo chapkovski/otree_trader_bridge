@@ -1,0 +1,19 @@
+{% extends "global/Page.html" %}
+{% load otree static %}
+
+{% block title %}
+Trading Initialization Failed
+{% endblock %}
+
+{% block content %}
+<p>
+The external trading backend could not be initialized for this group.
+</p>
+<p>
+API base: <code>{{ trading_api_base }}</code>
+</p>
+<p>
+Error: <code>{{ error_message }}</code>
+</p>
+{{ next_button }}
+{% endblock %}
