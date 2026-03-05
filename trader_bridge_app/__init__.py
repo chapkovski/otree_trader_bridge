@@ -1196,13 +1196,17 @@ def custom_export_mbo(players):
     if persisted_rows:
         for row in persisted_rows:
             metrics = _extract_submission_metrics_from_mbo_event_json(row["event_json"])
-            aggressor_side = _extract_aggressor_side_from_json(row["event_json"])
-            if not aggressor_side:
-                side_text = str(row["side"] or "").strip().lower()
-                if side_text == "bid":
-                    aggressor_side = "B"
-                elif side_text == "ask":
-                    aggressor_side = "S"
+            record_kind = str(row["record_kind"] or "").strip().lower()
+            event_type = str(row["event_type"] or "").strip().lower()
+            aggressor_side = ""
+            if record_kind == "trade" or event_type == "trade":
+                aggressor_side = _extract_aggressor_side_from_json(row["event_json"])
+                if not aggressor_side:
+                    side_text = str(row["side"] or "").strip().lower()
+                    if side_text == "bid":
+                        aggressor_side = "B"
+                    elif side_text == "ask":
+                        aggressor_side = "S"
             yield [
                 str(row["trading_session_uuid"] or ""),
                 row["event_seq"],
