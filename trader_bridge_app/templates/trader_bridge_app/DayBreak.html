@@ -1,0 +1,23 @@
+{% extends "global/Page.html" %}
+{% load otree static %}
+
+{% block title %}
+Day {{ completed_day }} Complete
+{% endblock %}
+
+{% block content %}
+<p>
+Trading is paused. You finished day {{ completed_day }} in market {{ market_number }}.
+</p>
+<p>
+Current snapshot: cash = <strong>{{ cash }}</strong>, shares = <strong>{{ shares }}</strong>,
+announced dividend = <strong>{{ dividend }}</strong>.
+</p>
+{% if snapshot_error %}
+  <p><em>Snapshot warning: {{ snapshot_error }}</em></p>
+{% endif %}
+<p>
+Click Next to continue to the waiting room. Trading day {{ next_day }} will start once everyone arrives.
+</p>
+{{ next_button }}
+{% endblock %}

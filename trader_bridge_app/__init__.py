@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import socket
 import sqlite3
 import traceback
@@ -22,7 +23,7 @@ class C(BaseConstants):
     Attributes:
         NAME_IN_URL (str): URL identifier for the app.
         PLAYERS_PER_GROUP (None): No group structure enforced.
-        NUM_ROUNDS (int): Number of rounds, read from NUM_ROUNDS environment variable (default: 30).
+        NUM_ROUNDS (int): Number of rounds, read from NUM_ROUNDS environment variable (default: 2).
         
         DEFAULT_TRADING_API_BASE (str): Base URL for the trading API server.
         DEFAULT_API_TIMEOUT_SECONDS (int): Timeout duration for API requests in seconds.
@@ -45,11 +46,11 @@ class C(BaseConstants):
     """
     NAME_IN_URL = "trader_bridge"
     PLAYERS_PER_GROUP = None
-    NUM_ROUNDS = int(os.getenv("NUM_ROUNDS", 30))
+    NUM_ROUNDS = int(os.getenv("NUM_ROUNDS", 2))
 
     DEFAULT_TRADING_API_BASE = "http://127.0.0.1:8001"
     DEFAULT_API_TIMEOUT_SECONDS = 20
-    DEFAULT_TRADING_DAY_DURATION = 1
+    DEFAULT_TRADING_DAY_DURATION = 2
     DEFAULT_STEP = 1
     DEFAULT_MAX_ORDERS_PER_MINUTE = 30
     DEFAULT_INITIAL_MIDPOINT = 100
@@ -251,6 +252,38 @@ def _post_json(url, payload, timeout_seconds):
         raise
 
 
+def _get_json(url, timeout_seconds):
+    _log("HTTP GET starting", url=url, timeout_seconds=timeout_seconds)
+    req = request.Request(url=url, method="GET")
+    try:
+        with request.urlopen(req, timeout=timeout_seconds) as resp:
+            charset = resp.headers.get_content_charset("utf-8")
+            raw = resp.read().decode(charset)
+            _log(
+                "HTTP GET response received",
+                status=getattr(resp, "status", None),
+                reason=getattr(resp, "reason", None),
+                headers=dict(resp.headers.items()),
+                raw_body=raw,
+            )
+            parsed = json.loads(raw)
+            _log("HTTP GET response parsed", parsed=parsed)
+            return parsed
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        _log("HTTP GET failed with HTTPError", status=exc.code, reason=exc.reason, body=detail)
+        raise RuntimeError(f"Trading API HTTP {exc.code}: {detail}") from exc
+    except error.URLError as exc:
+        _log("HTTP GET failed with URLError", reason=str(exc.reason), type=str(type(exc.reason)))
+        raise RuntimeError(f"Trading API unreachable at {url}: {exc.reason}") from exc
+    except socket.timeout as exc:
+        _log("HTTP GET failed with socket.timeout", timeout_seconds=timeout_seconds)
+        raise RuntimeError(f"Trading API timed out after {timeout_seconds} seconds.") from exc
+    except Exception as exc:
+        _log("HTTP GET failed with unexpected error", error=str(exc), traceback=traceback.format_exc())
+        raise
+
+
 def _build_initiate_payload(group: Group, num_players: int):
     cfg = group.session.config
     hybrid_noise_traders = _as_int(
@@ -260,13 +293,15 @@ def _build_initiate_payload(group: Group, num_players: int):
     # TEMP: force noise traders in all treatments (including "human_only") for debugging/demo runs.
     # Revert to the composition-based condition once we restore treatment-specific behavior.
     num_noise_traders = max(0, hybrid_noise_traders)
+    day_duration_minutes = _as_int(
+        cfg.get("trading_day_duration", C.DEFAULT_TRADING_DAY_DURATION),
+        C.DEFAULT_TRADING_DAY_DURATION,
+    )
     return dict(
         num_human_traders=num_players,
         num_noise_traders=num_noise_traders,
-        trading_day_duration=_as_int(
-            cfg.get("trading_day_duration", C.DEFAULT_TRADING_DAY_DURATION),
-            C.DEFAULT_TRADING_DAY_DURATION,
-        ),
+        # Backend expects total market duration (minutes). We run one market over all rounds.
+        trading_day_duration=max(1, day_duration_minutes * C.NUM_ROUNDS),
         step=_as_int(
             cfg.get("step", C.DEFAULT_STEP),
             C.DEFAULT_STEP,
@@ -286,6 +321,63 @@ def _build_initiate_payload(group: Group, num_players: int):
         alert_window_size=_as_int(cfg.get("alert_window_size", C.DEFAULT_ALERT_WINDOW_SIZE), C.DEFAULT_ALERT_WINDOW_SIZE),
         allow_self_trade=_as_bool(cfg.get("allow_self_trade", C.DEFAULT_ALLOW_SELF_TRADE), C.DEFAULT_ALLOW_SELF_TRADE),
     )
+
+
+def _pause_trading_session(group: Group):
+    if not group.trading_session_uuid or not group.trading_api_base:
+        raise RuntimeError("Cannot pause: missing trading session UUID or API base.")
+    cfg = group.session.config
+    timeout_seconds = _as_int(
+        cfg.get("trading_api_timeout_seconds", C.DEFAULT_API_TIMEOUT_SECONDS),
+        C.DEFAULT_API_TIMEOUT_SECONDS,
+    )
+    pause_url = f"{group.trading_api_base}/trading_session/{group.trading_session_uuid}/pause"
+    response = _post_json(pause_url, {}, timeout_seconds)
+    return response.get("data") or {}
+
+
+def _resume_trading_session(group: Group):
+    if not group.trading_session_uuid or not group.trading_api_base:
+        raise RuntimeError("Cannot resume: missing trading session UUID or API base.")
+    cfg = group.session.config
+    timeout_seconds = _as_int(
+        cfg.get("trading_api_timeout_seconds", C.DEFAULT_API_TIMEOUT_SECONDS),
+        C.DEFAULT_API_TIMEOUT_SECONDS,
+    )
+    resume_url = f"{group.trading_api_base}/trading_session/{group.trading_session_uuid}/resume"
+    response = _post_json(resume_url, {}, timeout_seconds)
+    return response.get("data") or {}
+
+
+def _group_init_error(group: Group) -> str:
+    return str(group.field_maybe_none("trading_init_error") or "")
+
+
+def _copy_round_1_trading_state(group: Group):
+    round_1_group = group.in_round(1)
+    group.trading_session_uuid = round_1_group.trading_session_uuid
+    group.trading_api_base = round_1_group.trading_api_base
+    group.trading_ws_base = round_1_group.trading_ws_base
+    group.trading_day_duration_minutes = round_1_group.trading_day_duration_minutes
+    group.trading_init_error = _group_init_error(round_1_group)
+    for player in group.get_players():
+        round_1_player = player.in_round(1)
+        player.trader_uuid = round_1_player.trader_uuid or str(player.participant.vars.get("trader_uuid") or "")
+        if player.trader_uuid:
+            player.participant.vars["trader_uuid"] = player.trader_uuid
+
+
+def _fetch_trader_info(group: Group, trader_uuid: str):
+    trader_id = str(trader_uuid or "").strip()
+    if not trader_id or not group.trading_api_base:
+        return {}
+    cfg = group.session.config
+    timeout_seconds = _as_int(
+        cfg.get("trading_api_timeout_seconds", C.DEFAULT_API_TIMEOUT_SECONDS),
+        C.DEFAULT_API_TIMEOUT_SECONDS,
+    )
+    response = _get_json(f"{group.trading_api_base}/trader_info/{trader_id}", timeout_seconds)
+    return response.get("data") or {}
 
 
 def after_all_players_arrive(group: Group):
@@ -402,16 +494,98 @@ class SyncTradingSession(WaitPage):
     body_text = "Please wait while the group trading session is created."
     after_all_players_arrive = after_all_players_arrive
 
+    @staticmethod
+    def is_displayed(player: Player):
+        return player.round_number == 1
+
+
+def resume_trading_after_wait(group: Group):
+    _copy_round_1_trading_state(group)
+    if _group_init_error(group):
+        return
+    if not group.trading_session_uuid:
+        group.trading_init_error = "Missing round-1 trading session UUID; cannot resume."
+        return
+    try:
+        result = _resume_trading_session(group)
+        _log(
+            "resume_trading_after_wait succeeded",
+            round_number=group.subsession.round_number,
+            trading_session_uuid=group.trading_session_uuid,
+            result=result,
+        )
+        group.trading_init_error = ""
+    except Exception as exc:
+        group.trading_init_error = str(exc)
+        _log(
+            "resume_trading_after_wait failed",
+            round_number=group.subsession.round_number,
+            trading_session_uuid=group.trading_session_uuid,
+            error=str(exc),
+            traceback=traceback.format_exc(),
+        )
+
+
+def pause_trading_after_wait(group: Group):
+    _copy_round_1_trading_state(group)
+    if _group_init_error(group):
+        return
+    if not group.trading_session_uuid:
+        group.trading_init_error = "Missing trading session UUID; cannot pause."
+        return
+    try:
+        result = _pause_trading_session(group)
+        _log(
+            "pause_trading_after_wait succeeded",
+            round_number=group.subsession.round_number,
+            trading_session_uuid=group.trading_session_uuid,
+            result=result,
+        )
+        group.trading_init_error = ""
+    except Exception as exc:
+        group.trading_init_error = str(exc)
+        _log(
+            "pause_trading_after_wait failed",
+            round_number=group.subsession.round_number,
+            trading_session_uuid=group.trading_session_uuid,
+            error=str(exc),
+            traceback=traceback.format_exc(),
+        )
+
+
+class PauseTradingSession(WaitPage):
+    title_text = "Pausing Market"
+    body_text = "Please wait while the market is paused for the intermission."
+    after_all_players_arrive = pause_trading_after_wait
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return (
+            player.round_number < C.NUM_ROUNDS
+            and not _group_init_error(player.group)
+            and bool(player.trader_uuid)
+        )
+
+
+class ResumeTradingSession(WaitPage):
+    title_text = "Waiting To Resume Market"
+    body_text = "Please wait for all participants to arrive. Trading will resume once everyone is ready."
+    after_all_players_arrive = resume_trading_after_wait
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return player.round_number > 1
+
 
 class InitFailed(Page):
     @staticmethod
     def is_displayed(player: Player):
-        return bool(player.group.trading_init_error)
+        return bool(_group_init_error(player.group))
 
     @staticmethod
     def vars_for_template(player: Player):
         return dict(
-            error_message=player.group.trading_init_error,
+            error_message=_group_init_error(player.group),
             trading_api_base=player.group.trading_api_base,
         )
 
@@ -421,7 +595,7 @@ class TradePage(Page):
 
     @staticmethod
     def is_displayed(player: Player):
-        return not player.group.trading_init_error and bool(player.trader_uuid)
+        return not _group_init_error(player.group) and bool(player.trader_uuid)
 
     @staticmethod
     def vars_for_template(player: Player):
@@ -452,24 +626,73 @@ class TradePage(Page):
             treatment=player.group.treatment,
             marketDesign=player.group.market_design,
             groupComposition=player.group.group_composition,
+            roundNumber=player.round_number,
+            totalRounds=C.NUM_ROUNDS,
+            dayDurationMinutes=player.group.trading_day_duration_minutes or C.DEFAULT_TRADING_DAY_DURATION,
         )
 
     @staticmethod
     def get_timeout_seconds(player: Player):
         duration_minutes = player.group.trading_day_duration_minutes or C.DEFAULT_TRADING_DAY_DURATION
+        # Day 1 is a hard stop to intermission; final day includes small closure buffer.
+        if player.round_number < C.NUM_ROUNDS:
+            return max(15, int(duration_minutes * 60))
         return max(15, int(duration_minutes * 60) + 30)
 
 
+class DayBreak(Page):
+    @staticmethod
+    def is_displayed(player: Player):
+        return (
+            player.round_number < C.NUM_ROUNDS
+            and not _group_init_error(player.group)
+            and bool(player.trader_uuid)
+        )
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        _copy_round_1_trading_state(player.group)
+        snapshot = {}
+        snapshot_error = ""
+        try:
+            snapshot = _fetch_trader_info(player.group, player.trader_uuid)
+        except Exception as exc:
+            snapshot_error = str(exc)
+            _log(
+                "DayBreak.vars_for_template trader_info failed",
+                player_id=player.id_in_subsession,
+                trader_uuid=player.trader_uuid,
+                error=str(exc),
+            )
+        cash = snapshot.get("cash", "")
+        shares = snapshot.get("shares", "")
+        dividend = random.choice([0, 8, 16, 24])
+        return dict(
+            market_number=1,
+            completed_day=player.round_number,
+            next_day=player.round_number + 1,
+            cash=cash,
+            shares=shares,
+            dividend=dividend,
+            snapshot_error=snapshot_error,
+        )
+
+
 class Results(Page):
-    pass
+    @staticmethod
+    def is_displayed(player: Player):
+        return player.round_number == C.NUM_ROUNDS
 
 
 page_sequence = [
-    # Intro,
-      SyncTradingSession, 
-      InitFailed,
-        TradePage, 
-        Results]
+    SyncTradingSession,
+    ResumeTradingSession,
+    InitFailed,
+    TradePage,
+    PauseTradingSession,
+    DayBreak,
+    Results,
+]
 
 
 def _resolve_sqlite_path_for_exports():
@@ -697,14 +920,20 @@ def _extract_submission_metrics_from_mbo_event_json(event_json_raw):
     return {
         "queue_position": _to_int_or_none(parsed.get("queue_position")),
         "queue_size": _to_float_or_none(parsed.get("queue_size")),
-        "submit_best_bid_px": _to_float_or_none(parsed.get("submit_best_bid_px")),
-        "submit_best_ask_px": _to_float_or_none(parsed.get("submit_best_ask_px")),
-        "submit_spread": _to_float_or_none(parsed.get("submit_spread")),
-        "aggr_dist_to_opp_touch": _to_float_or_none(parsed.get("aggr_dist_to_opp_touch")),
-        "aggr_dist_to_opp_touch_over_spread": _to_float_or_none(
-            parsed.get("aggr_dist_to_opp_touch_over_spread")
-        ),
     }
+
+
+def _extract_aggressor_side_from_json(payload_json_raw):
+    try:
+        parsed = json.loads(str(payload_json_raw or ""))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    side = str(parsed.get("aggressor_side") or "").strip().upper()
+    if side in {"B", "S"}:
+        return side
+    return ""
 
 
 def _normalize_side(order_type_raw):
@@ -944,6 +1173,7 @@ def custom_export_mbo(players):
         "record_kind",
         "event_type",
         "side",
+        "aggressor_side",
         "order_id",
         "trader_uuid",
         "price",
@@ -952,11 +1182,6 @@ def custom_export_mbo(players):
         "size_resting_after",
         "queue_position",
         "queue_size",
-        "submit_best_bid_px",
-        "submit_best_ask_px",
-        "submit_spread",
-        "aggr_dist_to_opp_touch",
-        "aggr_dist_to_opp_touch_over_spread",
         "status_after",
         "match_id",
         "contra_order_id",
@@ -971,6 +1196,13 @@ def custom_export_mbo(players):
     if persisted_rows:
         for row in persisted_rows:
             metrics = _extract_submission_metrics_from_mbo_event_json(row["event_json"])
+            aggressor_side = _extract_aggressor_side_from_json(row["event_json"])
+            if not aggressor_side:
+                side_text = str(row["side"] or "").strip().lower()
+                if side_text == "bid":
+                    aggressor_side = "B"
+                elif side_text == "ask":
+                    aggressor_side = "S"
             yield [
                 str(row["trading_session_uuid"] or ""),
                 row["event_seq"],
@@ -978,6 +1210,7 @@ def custom_export_mbo(players):
                 str(row["record_kind"] or ""),
                 str(row["event_type"] or ""),
                 str(row["side"] or ""),
+                aggressor_side,
                 str(row["order_id"] or ""),
                 str(row["trader_uuid"] or ""),
                 row["price"],
@@ -986,15 +1219,6 @@ def custom_export_mbo(players):
                 row["size_resting_after"],
                 metrics.get("queue_position") if metrics.get("queue_position") is not None else "",
                 metrics.get("queue_size") if metrics.get("queue_size") is not None else "",
-                metrics.get("submit_best_bid_px") if metrics.get("submit_best_bid_px") is not None else "",
-                metrics.get("submit_best_ask_px") if metrics.get("submit_best_ask_px") is not None else "",
-                metrics.get("submit_spread") if metrics.get("submit_spread") is not None else "",
-                metrics.get("aggr_dist_to_opp_touch") if metrics.get("aggr_dist_to_opp_touch") is not None else "",
-                (
-                    metrics.get("aggr_dist_to_opp_touch_over_spread")
-                    if metrics.get("aggr_dist_to_opp_touch_over_spread") is not None
-                    else ""
-                ),
                 str(row["status_after"] or ""),
                 str(row["match_id"] or ""),
                 str(row["contra_order_id"] or ""),
@@ -1034,6 +1258,7 @@ def custom_export_mbo(players):
                 "record_kind": "order",
                 "event_type": event_type,
                 "side": side,
+                "aggressor_side": "",
                 "order_id": order_id,
                 "trader_uuid": str(row["trader_uuid"] or ""),
                 "price": row["price"],
@@ -1042,11 +1267,6 @@ def custom_export_mbo(players):
                 "qty_resting_after": qty,
                 "queue_position": "",
                 "queue_size": "",
-                "submit_best_bid_px": "",
-                "submit_best_ask_px": "",
-                "submit_spread": "",
-                "aggr_dist_to_opp_touch": "",
-                "aggr_dist_to_opp_touch_over_spread": "",
                 "status_after": str(row["status"] or ""),
                 "match_id": "",
                 "contra_order_id": "",
@@ -1062,6 +1282,12 @@ def custom_export_mbo(players):
 
     for row in trade_rows:
         quantity = _extract_quantity_from_transaction_json(row["transaction_json"])
+        aggressor_side = _extract_aggressor_side_from_json(row["transaction_json"])
+        trade_side = ""
+        if aggressor_side == "B":
+            trade_side = "bid"
+        elif aggressor_side == "S":
+            trade_side = "ask"
         qty = _to_float_or_none(quantity)
         events.append(
             {
@@ -1072,7 +1298,8 @@ def custom_export_mbo(players):
                 "event_ts": str(row["timestamp"] or ""),
                 "record_kind": "trade",
                 "event_type": "trade",
-                "side": "",
+                "side": trade_side,
+                "aggressor_side": aggressor_side,
                 "order_id": "",
                 "trader_uuid": "",
                 "price": row["price"],
@@ -1081,11 +1308,6 @@ def custom_export_mbo(players):
                 "qty_resting_after": "",
                 "queue_position": "",
                 "queue_size": "",
-                "submit_best_bid_px": "",
-                "submit_best_ask_px": "",
-                "submit_spread": "",
-                "aggr_dist_to_opp_touch": "",
-                "aggr_dist_to_opp_touch_over_spread": "",
                 "status_after": "",
                 "match_id": str(row["transaction_id"] or ""),
                 "contra_order_id": "",
@@ -1107,6 +1329,7 @@ def custom_export_mbo(players):
             event["record_kind"],
             event["event_type"],
             event["side"],
+            event["aggressor_side"],
             event["order_id"],
             event["trader_uuid"],
             event["price"],
@@ -1115,11 +1338,6 @@ def custom_export_mbo(players):
             event["qty_resting_after"],
             event["queue_position"],
             event["queue_size"],
-            event["submit_best_bid_px"],
-            event["submit_best_ask_px"],
-            event["submit_spread"],
-            event["aggr_dist_to_opp_touch"],
-            event["aggr_dist_to_opp_touch_over_spread"],
             event["status_after"],
             event["match_id"],
             event["contra_order_id"],
