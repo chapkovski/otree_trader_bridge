@@ -1,0 +1,76 @@
+{% extends "trader_bridge_app/Page.html" %}
+{% block content %}
+
+<style>
+    .btn-secondary {
+    margin: 5px;
+    color: #fff;
+    background-color: #6c757d;
+    border-color: #6c757d;
+}
+    .btn-secondary.active {
+    margin: 5px;
+    color: #fff;
+    background-color: blue;
+    border-color: #6c757d;
+}
+    .sv-components-column {
+     display: block;
+    flex-direction: column;
+    background: white;
+}
+    .sv_main .sv-action__content > * {
+    background: blue;
+    color:white;
+}
+        input.sd-btn.sd-btn--action.sd-navigation__complete-btn {
+    background: blue;
+    color:white;
+}
+    label.sd-rating__item.sd-rating__item--selected.sd-rating__item--fixed-size{
+    background: blue;
+    }
+    h3.sd-title {
+        color: blue!important;
+}
+    .sd-item--checked .sd-item__decorator {
+    background: blue!important;
+}
+    .sd-root--compact .sd-body__navigation .sd-btn:not(.sd-btn--action) {
+    background-color: blue!important;
+    color: white!important;
+}
+
+</style>
+<div id="surveyContainer"></div>
+<script>
+
+    const surveyJSON = js_vars.survey_json;
+
+
+
+    const survey = new Survey.Model(surveyJSON);
+
+
+    survey.applyTheme(SurveyTheme.LayeredLightPanelless);
+    // Initialize the survey
+    // Save results on completion
+    survey.onComplete.add(function (result) {
+        const surveyResults = JSON.stringify(result.data);
+        console.log("Survey Results: ", surveyResults);
+
+        // Submit the results via POST or other methods
+        // Example: Sending to a hidden form field
+        document.getElementById('surveyResults').value = surveyResults;
+        $('#form').submit();
+    });
+
+    // Render the survey
+    Survey.StylesManager.applyTheme("bootstrap");
+    $("#surveyContainer").Survey({model: survey});
+</script>
+<!-- Hidden input to store results -->
+<input type="hidden" id="surveyResults" name="surveyResults" value="">
+
+
+{% endblock %}

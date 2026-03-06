@@ -1,0 +1,85 @@
+{% extends "trader_bridge_app/Page.html" %}
+{% load otree static %}
+
+{% block title %}
+Dear Participant,
+{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+
+<div class="container my-5 p-4 rounded shadow-sm">
+    <p>
+        You are invited to take part in an economic experiment studying trading behaviour in financial markets.
+        This project is funded by the Social Sciences and Humanities Research Council of Canada.
+        You will be asked to trade stocks on a virtual financial market with other participants.
+    </p>
+
+    <p>
+        Your participation in this study is entirely voluntary and presents no known risks or burdens.
+        You will receive a fixed payment for participating, as well as additional compensation based on your trading
+        performance and your answers to a financial literacy quiz.
+        You can withdraw from the study at any time without penalty.
+        However, if you withdraw before the end of the experiment, you will receive only a partial payment reflecting
+        the time spent.
+    </p>
+
+    <p>
+        All data generated during this study will remain confidential.
+        You will be asked to provide some basic demographic information, but none of this information will be used to
+        personally identify you and no personal information will appear in any published study.
+        Your decision to participate will remain completely confidential and only the researchers will have access to
+        individual data.
+        We do not collect any data that can personally identify you.
+    </p>
+
+    <p>
+        Data will be stored electronically on a secure server accessible only by the research team using a secure
+        password.
+        Data will be retained in de-identifiable format for 7 years and discarded afterwards, in accordance with
+        standard practices of the American Psychological Association.
+        As required by the guidelines of the American Economic Association, during the publication process the data may
+        be shared with other investigators for re-analysis.
+        However, only details sufficient to permit replication will be shared, ensuring security and confidentiality.
+    </p>
+
+    <p>
+        This study has been reviewed by the Research Ethics Board at the University of Calgary.
+        The research study you are participating in may be reviewed for quality assurance to ensure that required laws
+        and guidelines are followed.
+        If chosen, representative(s) of the Human Research Ethics Program (HREP) may access study-related data and/or
+        consent materials as part of the review.
+        All information accessed by the HREP will be upheld to the same level of confidentiality stated by the research
+        team.
+    </p>
+
+    <p>
+        If you are interested, you can receive a summary of the research study by emailing the primary researchers.
+    </p>
+    <ul>
+        <li>Prof. Marius Zoican at <a href="mailto:marius.zoican@ucalgary.ca">marius.zoican@ucalgary.ca</a></li>
+        <li>Dr. Philipp Chapkovski at <a href="mailto:chapkovski@gmail.com">chapkovski@gmail.com</a></li>
+    </ul>
+
+    <p>
+        If you wish to obtain further information regarding your rights as a participant, you may contact the Conjoint
+        Faculties Research Ethics Board (CFREB) at the University of Calgary at
+        <a href="mailto:cfreb@ucalgary.ca">cfreb@ucalgary.ca</a> or (403) 220-8640.
+    </p>
+
+    <p>
+        By proceeding, I agree to participate in research.
+        I understand that I can withdraw my consent to participate at any time and that by giving consent I am not
+        giving up any of my legal rights.
+    </p>
+
+    <div class="form-group mb-3 font-italic">
+        <label for="consentCheckbox" class="form-label font-italic" style="font-style: italic; color:red">
+            I have read and understood the information above.
+        </label>
+        <input type="checkbox" class="form-check-input ms-2" id="consentCheckbox" name="consent" required>
+    </div>
+
+    {% next_button %}
+</div>
+{% endblock %}

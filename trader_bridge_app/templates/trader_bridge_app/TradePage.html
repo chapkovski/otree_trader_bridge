@@ -25,7 +25,7 @@
       {% endif %}
     </script>
     {% endif %}
-    <link rel="stylesheet" href="{% static 'trader_bridge_app/vue/trader-embed.css' %}?v=20260306-4">
+    <link rel="stylesheet" href="{% static 'trader_bridge_app/vue/trader-embed.css' %}?v=20260306-5">
     <style>
       html, body {
         height: 100%;
@@ -37,12 +37,59 @@
         margin: 0;
         width: 100%;
       }
+      .trade-instructions-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, 0.5);
+        z-index: 1200;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .trade-instructions-overlay.is-open {
+        display: flex;
+      }
+      .trade-instructions-modal {
+        width: min(980px, 96vw);
+        max-height: 90vh;
+        overflow: auto;
+        background: #fff;
+        border-radius: 14px;
+        padding: 18px 18px 10px;
+      }
+      .trade-instructions-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .trade-instructions-close {
+        border: 0;
+        background: #e2e8f0;
+        color: #0f172a;
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        font-size: 20px;
+        line-height: 32px;
+        text-align: center;
+      }
     </style>
     <form class="otree-form" role="form" id="form" autocomplete="off" method="post">
       <script src="{% static 'otree/js/formInputs.js' %}"></script>
       <div id="trader-vue-app"></div>
       <noscript>This page requires JavaScript to load the trading interface.</noscript>
     </form>
+    <div class="trade-instructions-overlay" id="tradeInstructionsOverlay" aria-hidden="true">
+      <div class="trade-instructions-modal" role="dialog" aria-modal="true" aria-label="Instructions">
+        <div class="trade-instructions-header">
+          <h4 class="m-0">Instructions</h4>
+          <button type="button" class="trade-instructions-close" id="tradeInstructionsCloseBtn" aria-label="Close">×</button>
+        </div>
+        {% include "trader_bridge_app/includes/instructions.html" %}
+      </div>
+    </div>
 {% endblock %}
 
 {% block debug_info %}
@@ -84,5 +131,33 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'trader_bridge_app/vue/trader-embed.js' %}?v=20260306-4"></script>
+<script src="{% static 'trader_bridge_app/vue/trader-embed.js' %}?v=20260306-5"></script>
+<script>
+  (function () {
+    const closeBtn = document.getElementById("tradeInstructionsCloseBtn");
+    const overlay = document.getElementById("tradeInstructionsOverlay");
+    if (!closeBtn || !overlay) return;
+
+    function openModal() {
+      overlay.classList.add("is-open");
+      overlay.setAttribute("aria-hidden", "false");
+    }
+
+    function closeModal() {
+      overlay.classList.remove("is-open");
+      overlay.setAttribute("aria-hidden", "true");
+    }
+
+    window.openTradeInstructions = openModal;
+    window.closeTradeInstructions = closeModal;
+
+    closeBtn.addEventListener("click", closeModal);
+    overlay.addEventListener("click", function (event) {
+      if (event.target === overlay) closeModal();
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") closeModal();
+    });
+  })();
+</script>
 {% endblock %}

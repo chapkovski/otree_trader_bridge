@@ -1,0 +1,136 @@
+<div class="container-fluid px-0">
+  <div class="alert alert-primary mb-3" role="alert">
+    <strong>Welcome to this trading experiment.</strong> Please read these instructions carefully.
+    Your payment depends on your trading performance and your answers to a financial literacy quiz.
+  </div>
+
+  <div class="card mb-3 shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title">Overview</h5>
+      <ul class="mb-0">
+        <li>
+          You will trade a single stock with
+          <strong>{{ other_human_traders }}</strong> other participant{% if other_human_traders != 1 %}s{% endif %}
+          (<strong>{{ num_human_traders }}</strong> human traders total).
+          The experiment consists of <strong>{{ num_markets }}</strong> consecutive market{% if num_markets != 1 %}s{% endif %}.
+        </li>
+        <li>
+          At the beginning of each market you receive an endowment of either
+          <strong>{{ endowment_options_text }}</strong>.
+        </li>
+        <li>
+          Each market has <strong>{{ num_days }}</strong> trading period{% if num_days != 1 %}s{% endif %},
+          each lasting <strong>{{ trading_day_duration }}</strong> minute{% if trading_day_duration != 1 %}s{% endif %}
+          (<strong>{{ market_total_minutes }}</strong> minutes total per market).
+          At the end of each period, you forecast the end-of-period price for the next period.
+        </li>
+        <li>
+          At the end of all markets, you complete a financial literacy quiz.
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  {% if has_algorithmic_traders %}
+  <div class="card mb-3 shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title">Algorithmic Traders</h5>
+      <ul class="mb-0">
+        <li>Algorithmic traders may operate in your market alongside human participants.</li>
+        <li>You are not told whether algorithms are present during trading.</li>
+        <li>If present, they submit orders automatically according to undisclosed rules.</li>
+        <li>At the end of the experiment, you will be asked whether you believe algorithms were present.</li>
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card mb-3 shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title">The Stock</h5>
+      <ul class="mb-0">
+        <li>
+          The stock pays a dividend at the end of each period. Dividends are equally likely to be
+          <strong>{{ dividend_values_text }}</strong>, with expected dividend
+          <strong>{{ expected_dividend }}</strong> per period.
+        </li>
+        <li>
+          Fundamental value declines over time and equals expected dividend times remaining periods (including current period).
+          It starts at <strong>{{ fundamental_value_start }}</strong> in period 1 and declines by
+          <strong>{{ fundamental_value_step }}</strong> each period, regardless of the realized dividend.
+          By period <strong>{{ payoff_period }}</strong>, it is <strong>{{ fundamental_value_last }}</strong>.
+          After the final dividend is paid, the stock is worthless.
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card mb-3 shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title">Trading Rules</h5>
+      <p class="mb-2">
+        Trading uses a limit order book. You may submit buy/sell limit orders or trade immediately against resting orders.
+      </p>
+      <ul class="mb-0">
+        <li>You may buy shares only if you have sufficient cash.</li>
+        <li>You may sell shares only if you own them (no short selling).</li>
+        <li>You cannot borrow additional cash.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card mb-3 shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title">Price Forecasting</h5>
+      <p class="mb-0">
+        At the end of each period, after dividends are paid, you submit a point forecast for next-period end price
+        and report confidence. If your forecast is within
+        <strong>{{ forecast_bonus_threshold_pct }}%</strong> of the realized price, you earn a bonus of
+        <strong>E${{ forecast_bonus_amount }}</strong>.
+      </p>
+    </div>
+  </div>
+
+  <div class="card mb-3 shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title">Payment</h5>
+      <ul class="mb-0">
+        <li>
+          Final payoff equals your cash holdings at the end of a randomly selected market,
+          including period <strong>{{ payoff_period }}</strong> dividends,
+          plus forecast bonuses earned across all markets.
+        </li>
+        <li>
+          Experimental currency converts to real money at rate:
+          <strong>1 point = {{ exchange_rate_text }}</strong> (session currency units).
+        </li>
+        <li>
+          Quiz bonus per correct answer: <strong>{{ quiz_bonus_per_correct_text }}</strong> points.
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card mb-3 shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title">Important Notes</h5>
+      <ul class="mb-0">
+        <li>Your trading screen shows order book, recent transactions, cash balance, and share holdings.</li>
+        <li>Each period lasts exactly <strong>{{ trading_day_duration }}</strong> minute{% if trading_day_duration != 1 %}s{% endif %}. A timer shows time remaining.</li>
+        <li>
+          Markets are independent. Each new market starts with a fresh endowment and the stock fundamental value resets.
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title">Training</h5>
+      <p class="mb-0">
+        Before main trading, you will watch a short interface explainer and complete a comprehension quiz.
+        You must answer all comprehension questions correctly before proceeding.
+      </p>
+    </div>
+  </div>
+</div>

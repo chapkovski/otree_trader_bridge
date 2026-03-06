@@ -3,11 +3,46 @@ from os import environ
 
 SESSION_CONFIGS = [
     dict(
-        name="trader_bridge_demo",
-        display_name="Trader Bridge Demo",
+        name="intro_only",
+        display_name="Intro Only",
         num_demo_participants=2,
         players_per_group=2,
+        app_sequence=["intro"],
+    ),
+    dict(
+        name="trader_bridge_demo",
+        display_name="Trader Bridge Demo",
+        num_demo_participants=8,
+        players_per_group=2,
         app_sequence=["trader_bridge_app"],
+        trading_api_base=environ.get("TRADING_API_BASE", "http://localhost:8001"),
+        trading_api_timeout_seconds=20,
+        trading_day_duration=1,
+        step=1,
+        max_orders_per_minute=30,
+        hybrid_noise_traders=1,
+        treatments=["gh", "nh", "gm", "nm"],
+        initial_midpoint=100,
+        initial_spread=10,
+        initial_cash=2600,
+        initial_stocks=20,
+        alert_streak_frequency=3,
+        alert_window_size=5,
+        allow_self_trade=True,
+    ),
+    dict(
+        name="post_exp_only",
+        display_name="Post-Experiment Only",
+        num_demo_participants=2,
+        players_per_group=2,
+        app_sequence=["post_exp"],
+    ),
+    dict(
+        name="full_study",
+        display_name="Full Study (Intro + Market + Post)",
+        num_demo_participants=8,
+        players_per_group=2,
+        app_sequence=["intro", "trader_bridge_app", "post_exp"],
         trading_api_base=environ.get("TRADING_API_BASE", "http://localhost:8001"),
         trading_api_timeout_seconds=20,
         trading_day_duration=1,
@@ -29,6 +64,8 @@ SESSION_CONFIGS = [
 SESSION_CONFIG_DEFAULTS = dict(
     real_world_currency_per_point=1.00,
     participation_fee=0.00,
+    forecast_bonus_threshold_pct=1,
+    dividend_values=[0, 4, 8, 20],
     doc="",
 )
 

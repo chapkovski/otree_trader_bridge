@@ -1,0 +1,254 @@
+{% extends "post_exp/Page.html" %}
+{% block content %}
+
+<style>
+    .btn-secondary {
+        margin: 5px;
+        color: #fff;
+        background-color: #6c757d;
+        border-color: #6c757d;
+    }
+
+    .btn-secondary.active {
+        margin: 5px;
+        color: #fff;
+        background-color: blue;
+        border-color: #6c757d;
+    }
+
+    .sv-components-column {
+        display: block;
+        flex-direction: column;
+        background: white;
+    }
+
+    .sv_main .sv-action__content > * {
+        background: blue;
+        color: white;
+    }
+
+    input.sd-btn.sd-btn--action.sd-navigation__complete-btn {
+        background: blue;
+        color: white;
+    }
+
+    label.sd-rating__item.sd-rating__item--selected.sd-rating__item--fixed-size {
+        background: blue;
+    }
+
+    h3.sd-title {
+        color: blue !important;
+    }
+
+    .sd-item--checked .sd-item__decorator {
+        background: blue !important;
+    }
+
+    .sd-root--compact .sd-body__navigation .sd-btn:not(.sd-btn--action) {
+        background-color: blue !important;
+        color: white !important;
+    }
+
+</style>
+<div id="surveyContainer"></div>
+<script>
+
+    const surveyJSON = {
+        "showPrevButton": false,
+        "showProgressBar": "false",
+        "questionsOnPageMode": "questionPerPage",
+        "title": "Financial Quiz",
+        "showQuestionNumbers": "off",
+        "showCompletedPage": false,
+
+        "pages": [
+            {
+                "name": "page1",
+                "elements": [
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "savings_interest",
+                        "title": "Suppose you had $100 in a savings account and the interest rate was 3% per year. After 4 years, how much do you think you would have in the account if you left the money to grow?",
+                        "choices": [
+                            "More than $112",
+                            "Exactly $112",
+                            "Less than $112",
+                            "Don't know",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "inflation_effect",
+                        "title": "Imagine that the interest rate on your savings account was 1% per year and inflation was 2% per year. After 1 year, with the money in this account, would you be able to buy",
+                        "choices": [
+                            "More than today",
+                            "Exactly the same as today",
+                            "Less than today",
+                            "Don't know / Not sure",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "bid_price_definition",
+                        "title": "When placing an order, you may see several prices: the last traded price, the ask price, the bid price, and the closing price. What is the bid price?",
+                        "choices": [
+                            "The highest price a buyer is currently willing to pay.",
+                            "The price you personally choose when submitting a buy order.",
+                            "The lowest price a seller is currently willing to accept.",
+                            "The most recent price at which the security traded.",
+                            "Don't know / Not sure",
+                            "Prefer not to say",
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "mortgage_comparison",
+                        "title": "A 15-year mortgage typically requires higher monthly payments than a 30-year mortgage, but the total interest paid over the life of the loan will be less.",
+                        "choices": [
+                            "True",
+                            "False",
+                            "Don't know / Not sure",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "asset_fluctuations",
+                        "title": "Normally, which asset described below displays the highest fluctuations over time?",
+                        "choices": [
+                            "Savings accounts",
+                            "Stocks",
+                            "Bonds",
+                            "Don't know / Not sure",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "investment_risk",
+                        "title": "When an investor spreads his money among different assets, does the risk of losing a lot of money",
+                        "choices": [
+                            "Increase",
+                            "Stay the same",
+                            "Decrease",
+                            "Don't know / Not sure",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "long_term_returns",
+                        "title": "Considering a long time period (for example, 10 or 20 years), which asset described below normally gives the highest return?",
+                        "choices": [
+                            "Savings accounts",
+                            "Stocks",
+                            "Bonds",
+                            "Don't know / Not sure",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "stock_mutual_fund_loss",
+                        "title": "Do you think that the following statement is true or false? \"If you were to invest $1,000 in a stock mutual fund, it would be possible to have less than $1,000 when you withdraw your money.\"",
+                        "choices": [
+                            "True",
+                            "False",
+                            "Don't know / Not sure",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "bid_ask_spread",
+                        "title": "When viewing a security’s quote, you may see both a bid price and an ask price. What is the bid–ask spread?",
+                        "choices": [
+                            "The average of the bid price and the ask price.",
+                            "The difference between the lowest ask price and the highest bid price.",
+                            "The fee the broker charges each time you trade.",
+                            "The change in the stock price from market open to market close.",
+                            "Don't know / Not sure",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "mutual_fund_statements",
+                        "title": "Which of the following statements is correct?",
+                        "choices": [
+                            "Once one invests in a mutual fund, one cannot withdraw the money in the first year",
+                            "Mutual funds can invest in several assets, for example invest in both stocks and bonds",
+                            "Mutual funds pay a guaranteed rate of return which depends on their past performance",
+                            "None of the above",
+                            "Don't know / Not sure",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "bond_investment",
+                        "title": "Which of the following statements is correct? If somebody buys a bond of firm B",
+                        "choices": [
+                            "She owns a part of firm B",
+                            "She is liable for the company's debts",
+                            "She has lent money to firm B",
+                            "None of the above",
+                            "Prefer not to say"
+                        ]
+                    },
+                    {
+                        "isRequired": true,
+                        "type": "radiogroup",
+                        "name": "credit_card_payment",
+                        "title": "Suppose you owe $3,000 on your credit card. You pay a minimum payment of $30 each month. At an annual percentage rate of 12% (or 1% per month), how many years would it take to eliminate your credit card debt if you made no additional new charges?",
+                        "choices": [
+                            "Less than 5 years",
+                            "Between 5 and 10 years",
+                            "Between 10 and 15 years",
+                            "Never",
+                            "None of the above",
+                            "Prefer not to say"
+                        ]
+                    }
+                ]
+            }
+        ]
+    };
+    const survey = new Survey.Model(surveyJSON);
+
+
+    survey.applyTheme(SurveyTheme.LayeredLightPanelless);
+    // Initialize the survey
+    // Save results on completion
+    survey.onComplete.add(function (result) {
+        const surveyResults = JSON.stringify(result.data);
+        console.log("Survey Results: ", surveyResults);
+
+        // Submit the results via POST or other methods
+        // Example: Sending to a hidden form field
+        document.getElementById('surveyResults').value = surveyResults;
+        $('#form').submit();
+    });
+
+    // Render the survey
+    Survey.StylesManager.applyTheme("bootstrap");
+    $("#surveyContainer").Survey({model: survey});
+</script>
+<!-- Hidden input to store results -->
+<input type="hidden" id="surveyResults" name="surveyResults" value="">
+
+
+{% endblock %}

@@ -2,9 +2,11 @@ import os
 import traceback
 import csv
 import json
+import ast
 from pathlib import Path
 
 from otree.api import *
+from otree.api import Page as oTreePage
 from .utils import (
     _as_bool,
     _as_float,
@@ -21,6 +23,157 @@ doc = """
 oTree app that initializes one external trader UUID per group participant and
 opens a websocket-driven trading page.
 """
+
+
+def _format_number(value):
+    value = _as_float(value, 0.0)
+    if float(value).is_integer():
+        return str(int(value))
+    return f"{float(value):.2f}".rstrip("0").rstrip(".")
+
+
+def _as_number_list(raw, fallback):
+    if isinstance(raw, (list, tuple)):
+        values = []
+        for item in raw:
+            try:
+                values.append(float(item))
+            except (TypeError, ValueError):
+                continue
+        return values or list(fallback)
+
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return list(fallback)
+        for parser in (json.loads, ast.literal_eval):
+            try:
+                parsed = parser(text)
+            except Exception:
+                continue
+            if isinstance(parsed, (list, tuple)):
+                return _as_number_list(parsed, fallback)
+        parts = [x.strip() for x in text.split(",") if x.strip()]
+        values = []
+        for part in parts:
+            try:
+                values.append(float(part))
+            except (TypeError, ValueError):
+                continue
+        return values or list(fallback)
+    return list(fallback)
+
+
+def _money(value):
+    return f"E${_format_number(value)}"
+
+
+def _money_series_text(values):
+    shown = [_money(v) for v in values]
+    if not shown:
+        return ""
+    if len(shown) == 1:
+        return shown[0]
+    if len(shown) == 2:
+        return f"{shown[0]} or {shown[1]}"
+    return ", ".join(shown[:-1]) + f", or {shown[-1]}"
+
+
+def _natural_join(items):
+    parts = [str(x) for x in items if str(x).strip()]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return f"{parts[0]} or {parts[1]}"
+    return ", ".join(parts[:-1]) + f", or {parts[-1]}"
+
+
+def _format_endowment_options_text(options):
+    if not options:
+        return ""
+    entries = []
+    for cash, shares in options:
+        entries.append(f"{int(_as_int(shares, 0))} shares and {_money(cash)} in cash")
+    return _natural_join(entries)
+
+
+def _instruction_context(player):
+    cfg = player.session.config
+    num_markets = max(1, _as_int(cfg.get("num_markets", C.NUM_MARKETS), C.NUM_MARKETS))
+    num_days = max(1, _as_int(cfg.get("num_days", C.DAYS_PER_MARKET), C.DAYS_PER_MARKET))
+    num_human_traders = max(1, _as_int(cfg.get("players_per_group", C.DEFAULT_GROUP_SIZE), C.DEFAULT_GROUP_SIZE))
+    other_human_traders = max(0, num_human_traders - 1)
+    day_duration = _resolve_day_duration_minutes(cfg, C.DEFAULT_TRADING_DAY_DURATION)
+    market_total_minutes = num_days * day_duration
+    forecast_bonus_amount = _as_float(cfg.get("forecast_bonus_amount", C.DEFAULT_FORECAST_BONUS_AMOUNT), C.DEFAULT_FORECAST_BONUS_AMOUNT)
+    forecast_bonus_threshold_pct = _as_float(
+        cfg.get("forecast_bonus_threshold_pct", C.DEFAULT_FORECAST_BONUS_THRESHOLD_PCT),
+        C.DEFAULT_FORECAST_BONUS_THRESHOLD_PCT,
+    )
+    dividend_values = _as_number_list(
+        cfg.get("dividend_values", cfg.get("dividends", C.DEFAULT_DIVIDEND_VALUES)),
+        C.DEFAULT_DIVIDEND_VALUES,
+    )
+    unique_dividend_values = sorted(set(dividend_values))
+    shown_dividends = unique_dividend_values[:4] if len(unique_dividend_values) >= 4 else list(C.DEFAULT_DIVIDEND_VALUES)
+    expected_dividend = sum(shown_dividends) / max(1, len(shown_dividends))
+    fundamental_value_start = expected_dividend * num_days
+    fundamental_value_last = expected_dividend
+    group_composition = str(getattr(getattr(player, "group", None), "group_composition", "") or "").strip().lower()
+    participant_condition = str(getattr(player.participant, "vars", {}).get("condition", "") or "").strip().lower()
+    has_algorithmic_traders = (
+        group_composition == "hybrid" or participant_condition in {"hybrid", "gm", "nm"}
+    )
+    endowment_options = _parse_endowment_options(cfg.get("human_trader_endowments"))
+    exchange_rate = _as_float(cfg.get("real_world_currency_per_point", 1), 1)
+    quiz_bonus_per_correct = _as_float(cfg.get("fee_per_correct_answer", 1), 1)
+    return dict(
+        num_human_traders=num_human_traders,
+        other_human_traders=other_human_traders,
+        has_algorithmic_traders=has_algorithmic_traders,
+        num_markets=num_markets,
+        num_days=num_days,
+        total_periods=num_markets * num_days,
+        trading_day_duration=day_duration,
+        market_total_minutes=market_total_minutes,
+        endowment_options_text=_format_endowment_options_text(endowment_options),
+        expected_dividend=_money(expected_dividend),
+        fundamental_value_start=_money(fundamental_value_start),
+        fundamental_value_step=_money(expected_dividend),
+        fundamental_value_last=_money(fundamental_value_last),
+        forecast_bonus_amount=_format_number(forecast_bonus_amount),
+        forecast_bonus_threshold_pct=_format_number(forecast_bonus_threshold_pct),
+        dividend_values_text=_money_series_text(shown_dividends),
+        payoff_period=num_days,
+        exchange_rate_text=_format_number(exchange_rate),
+        quiz_bonus_per_correct_text=_format_number(quiz_bonus_per_correct),
+    )
+
+
+def _load_dividends_csv_for_constants():
+    path = Path(__file__).resolve().parent.parent / "data" / "dividends.csv"
+    if not path.exists():
+        raise RuntimeError(f"Missing dividends CSV at {path}")
+    values = []
+    with path.open("r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+    if not rows:
+        return values
+    start_idx = 0
+    first = [c.strip().lower() for c in rows[0]]
+    if first and first[0] in {"dividend_per_share", "dividend", "value"}:
+        start_idx = 1
+    for row in rows[start_idx:]:
+        if not row:
+            continue
+        text = str(row[0]).strip()
+        if not text:
+            continue
+        values.append(_as_float(text, 0.0))
+    return values
 
 
 class C(BaseConstants):
@@ -54,7 +207,7 @@ class C(BaseConstants):
     NAME_IN_URL = "trader_bridge"
     PLAYERS_PER_GROUP = None
     NUM_MARKETS = max(1, int(os.getenv("NUM_MARKETS", 2)))
-    DAYS_PER_MARKET = max(1, int(os.getenv("DAYS_PER_MARKET", 1)))
+    DAYS_PER_MARKET = max(1, int(os.getenv("DAYS_PER_MARKET", 2)))
     NUM_ROUNDS = int(os.getenv("NUM_ROUNDS", NUM_MARKETS * DAYS_PER_MARKET))
 
     DEFAULT_TRADING_API_BASE = "http://127.0.0.1:8001"
@@ -71,6 +224,9 @@ class C(BaseConstants):
     DEFAULT_ALLOW_SELF_TRADE = True
     DEFAULT_GROUP_SIZE = 2
     DEFAULT_HYBRID_NOISE_TRADERS = 1
+    DEFAULT_FORECAST_BONUS_AMOUNT = 1
+    DEFAULT_FORECAST_BONUS_THRESHOLD_PCT = 1
+    DEFAULT_DIVIDEND_VALUES = (0, 4, 8, 20)
     TREATMENTS = ("gh", "nh", "gm", "nm")
     TREATMENT_MARKET_DESIGN = {
         "gh": "gamified",
@@ -89,6 +245,7 @@ class C(BaseConstants):
         (2600.0, 20),
         (3800.0, 10),
     )
+    DIVIDEND_SCHEDULE = tuple(_load_dividends_csv_for_constants())
 
 
 class Subsession(BaseSubsession):
@@ -121,6 +278,27 @@ class Player(BasePlayer):
     forecast_price_next_day = models.FloatField(blank=True)
     forecast_confidence_next_day = models.IntegerField(blank=True)
     forecast_survey_json = models.LongStringField(blank=True)
+
+
+class Page(oTreePage):
+    instructions = True
+
+    def get_context_data(self, **context):
+        r = super().get_context_data(**context)
+        max_pages = int(getattr(self.participant, "_max_page_index", 1) or 1)
+        page_index = int(getattr(self, "_index_in_pages", 1) or 1)
+        progress = int(page_index / max_pages * 100) if max_pages > 0 else 0
+        progress = max(0, min(100, progress))
+        r.update(
+            dict(
+                maxpages=max_pages,
+                page_index=page_index,
+                progress=f"{progress:d}",
+                instructions=self.instructions,
+            )
+        )
+        r.update(_instruction_context(self.player))
+        return r
 
 
 def creating_session(subsession: Subsession):
@@ -254,55 +432,6 @@ def _resolve_num_days(cfg):
     return num_days
 
 
-def _parse_dividends_from_raw(raw_value):
-    if raw_value is None:
-        return []
-    if isinstance(raw_value, str):
-        candidates = [x.strip() for x in raw_value.split(",")]
-    elif isinstance(raw_value, (list, tuple)):
-        candidates = list(raw_value)
-    else:
-        return []
-    values = []
-    for item in candidates:
-        text = str(item).strip()
-        if not text:
-            continue
-        values.append(_as_float(text, 0.0))
-    return values
-
-
-def _load_dividends_from_csv():
-    path = Path(__file__).resolve().parent / "data" / "dividends.csv"
-    if not path.exists():
-        raise RuntimeError(f"Missing dividends CSV at {path}")
-    values = []
-    with path.open("r", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        rows = list(reader)
-    if not rows:
-        return values
-    start_idx = 0
-    first = [c.strip().lower() for c in rows[0]]
-    if first and first[0] in {"dividend_per_share", "dividend", "value"}:
-        start_idx = 1
-    for row in rows[start_idx:]:
-        if not row:
-            continue
-        text = str(row[0]).strip()
-        if not text:
-            continue
-        values.append(_as_float(text, 0.0))
-    return values
-
-
-def _load_dividend_schedule(cfg):
-    configured = _parse_dividends_from_raw(cfg.get("dividends"))
-    if configured:
-        return configured
-    return _load_dividends_from_csv()
-
-
 def _get_group_dividend_schedule(group: Group):
     raw = str(group.dividends_csv or "").strip()
     if raw:
@@ -312,7 +441,7 @@ def _get_group_dividend_schedule(group: Group):
                 return [_as_float(x, 0.0) for x in parsed]
         except Exception:
             pass
-    return _load_dividend_schedule(group.session.config)
+    return [float(x) for x in C.DIVIDEND_SCHEDULE]
 
 
 def _parse_endowment_options(raw_value):
@@ -355,13 +484,13 @@ def _build_initiate_payload(group: Group, players):
     num_noise_traders = max(0, hybrid_noise_traders)
     num_days = _resolve_num_days(cfg)
     day_duration_minutes = _resolve_day_duration_minutes(cfg, C.DEFAULT_TRADING_DAY_DURATION)
-    all_dividends = _load_dividend_schedule(cfg)
+    all_dividends = [float(x) for x in C.DIVIDEND_SCHEDULE]
     required_days = C.NUM_ROUNDS
     if len(all_dividends) < required_days:
         raise RuntimeError(
             f"Dividend schedule has {len(all_dividends)} values but requires at least {required_days}."
         )
-    all_dividends = [float(x) for x in all_dividends[:required_days]]
+    all_dividends = all_dividends[:required_days]
     market_number = _market_number_for_round(group.subsession.round_number)
     market_start_idx = (market_number - 1) * C.DAYS_PER_MARKET
     market_end_idx = market_start_idx + num_days
@@ -726,6 +855,8 @@ class ResumeTradingSession(WaitPage):
 
 
 class InitFailed(Page):
+    instructions = False
+
     @staticmethod
     def is_displayed(player: Player):
         return bool(_group_init_error(player.group))
@@ -748,7 +879,7 @@ class TradePage(Page):
     @staticmethod
     def vars_for_template(player: Player):
         ws_url = f"{player.group.trading_ws_base}/trader/{player.trader_uuid}"
-        return dict(
+        data = dict(
             ws_url=ws_url,
             trader_uuid=player.trader_uuid,
             trading_api_base=player.group.trading_api_base,
@@ -757,6 +888,8 @@ class TradePage(Page):
             market_design=player.group.market_design,
             group_composition=player.group.group_composition,
         )
+        data.update(_instruction_context(player))
+        return data
 
     @staticmethod
     def js_vars(player: Player):

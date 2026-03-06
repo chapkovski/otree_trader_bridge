@@ -1,0 +1,234 @@
+{% extends "post_exp/Page.html" %}
+{% block content %}
+
+<style>
+    .btn-secondary {
+        margin: 5px;
+        color: #fff;
+        background-color: #6c757d;
+        border-color: #6c757d;
+    }
+
+    .btn-secondary.active {
+        margin: 5px;
+        color: #fff;
+        background-color: blue;
+        border-color: #6c757d;
+    }
+
+    input.sd-btn.sd-navigation__next-btn {
+        background: blue !important;
+        color: white;
+    }
+
+    .sv-components-column {
+        display: block;
+        flex-direction: column;
+        background: white;
+    }
+
+    .sv_main .sv-action__content > * {
+        background: blue;
+        color: white;
+    }
+
+    input.sd-btn.sd-btn--action.sd-navigation__complete-btn {
+        background: blue;
+        color: white;
+    }
+
+    label.sd-rating__item.sd-rating__item--selected.sd-rating__item--fixed-size {
+        background: blue;
+    }
+
+    h3.sd-title {
+        color: blue !important;
+    }
+
+    .sd-item--checked .sd-item__decorator {
+        background: blue !important;
+    }
+</style>
+<div id="surveyContainer"></div>
+<script>
+    // Survey JSON for NASA TLX ratings
+    const surveyJSON = {
+        "requiredText": "",
+        "completeText": "Next",
+        "showCompletedPage": false,
+        pages: [
+            {
+                name: "personal_info",
+                title: "Personal Information",
+                elements: [
+                    {
+                        type: "radiogroup",
+                        name: "gender",
+                        title: "Gender:",
+                        isRequired: true,
+                        choices: ["Male", "Female", "Other"]
+                    },
+                    {
+                        type: "text",
+                        name: "age",
+                        title: "Age:",
+                        inputType: "number",
+                        isRequired: true
+                    },
+                    //
+                    {
+                        isRequired: true,
+                        type: "dropdown",
+                        name: "nationality",
+                        title: "Nationality:",
+                        choices: js_vars.countries,
+                        defaultValue: null
+                    },
+                    {
+                        isRequired: true,
+                        type: "dropdown",
+                        name: "education",
+                        title: "Education:",
+                        choices: [
+                            "did not graduate high school",
+                            "high-school graduate",
+                            "undergraduate: 1st year",
+                            "undergraduate: 2nd year",
+                            "undergraduate: 3d year",
+                            "undergraduate: 4th year",
+                            "master",
+                            "MBA",
+                            "PhD"
+                        ]
+                    },
+                    {
+                        isRequired: true,
+                        type: "dropdown",
+                        name: "study_major",
+                        title: "Study major:",
+                        choices: ["Finance", "Economics", "Other Management", "Other"]
+                    }
+                ]
+            },
+
+            {
+                name: "financial_experience",
+                title: "Financial Experience",
+                elements: [
+                    {
+                        type: "boolean",
+                        name: "course_financial",
+                        title: "Did you take any course focused on financial markets?",
+                        isRequired: true
+                    },
+                    {
+                        type: "boolean",
+                        name: "experiment_before",
+                        title: "Have you taken part in an experiment before?",
+                        isRequired: true
+                    },
+                    {
+                        isRequired: true,
+                        type: "boolean",
+                        name: "trading_experience",
+                        title: "Do you have any trading experience?"
+                    },
+                    {
+                        isRequired: true,
+                        type: "boolean",
+                        name: "online_trading_experience",
+                        title: "Do you use mobile trading apps?"
+                    },
+                    {
+                        type: "radiogroup",
+                        name: "trading_frequency",
+                        title: "How often do you trade online?",
+                        choices: [
+                            "Multiple times a day",
+                            "Daily",
+                            "Weekly",
+                            "Monthly",
+                            "Less than once a month"
+                        ]
+                    },
+                    {
+                        type: "radiogroup",
+                        name: "portfolio_frequency",
+                        title: "How often do you check the value of your portfolio?",
+                        choices: [
+                            "Multiple times a day",
+                            "Daily",
+                            "Weekly",
+                            "Monthly",
+                            "Less than once a month"
+                        ]
+                    },
+                    {
+                        type: "radiogroup",
+                        name: "asset_class",
+                        title: "Which asset class do you trade the most?",
+                        choices: [
+                            "Stocks",
+                            "Bonds",
+                            "Derivatives (Options, Futures)",
+                            "Cryptocurrencies"
+                        ]
+                    },
+                    {
+                        type: "radiogroup",
+                        name: "use_leverage",
+                        title: "Do you use leverage (e.g., trading on margin)?",
+                        choices: ["Yes", "No", "Do not know"]
+                    }
+                ]
+            },
+            {
+                name: "feedback",
+                title: "Feedback Questions",
+                elements: [
+                    {
+                        isRequired: true,
+                        type: "comment",
+                        name: "purpose",
+                        title: "What do you think is the purpose of this study?",
+                        defaultValue: ""
+                    },
+                    {
+                        isRequired: true,
+                        type: "comment",
+                        name: "difficulty",
+                        title: "Did you encounter any difficulty throughout the experiment?",
+                        defaultValue: ""
+                    }
+                ]
+            }
+        ]
+    };
+
+    // Render SurveyJS
+
+    const survey = new Survey.Model(surveyJSON);
+
+
+    survey.applyTheme(SurveyTheme.LayeredLightPanelless);
+    // Initialize the survey
+    // Save results on completion
+    survey.onComplete.add(function (result) {
+        const surveyResults = JSON.stringify(result.data);
+        console.log("Survey Results: ", surveyResults);
+
+        // Submit the results via POST or other methods
+        // Example: Sending to a hidden form field
+        document.getElementById('surveyResults').value = surveyResults;
+        $('#form').submit();
+    });
+
+    // Render the survey
+    Survey.StylesManager.applyTheme("bootstrap");
+    $("#surveyContainer").Survey({model: survey});
+</script>
+<!-- Hidden input to store results -->
+<input type="hidden" id="surveyResults" name="surveyResults" value="">
+
+
+{% endblock %}

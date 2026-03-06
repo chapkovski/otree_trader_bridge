@@ -1,0 +1,73 @@
+{% block title %}
+Payoff
+{% endblock %}
+{% block content %}
+<div class="container mt-5 mb-3">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Payment Details</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">
+                            <strong>Random trading day chosen to pay:</strong>
+                            {% if paid_day_label %}
+                                Day {{ paid_day_label }} of 12
+                            {% else %}
+                                Not set
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Payoff for trade:</strong> {{ trade_payoff }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Accumulated belief/forecast bonuses:</strong> {{ bonus_total }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Payoff from lottery draw:</strong>
+                            {% if hl_payoff  %}
+                                {{ hl_payoff }}
+                            {% else %}
+                                Not drawn
+                            {% endif %}
+                        </li>
+                        
+                        <li class="list-group-item">
+                            <strong>Number of correct answers in quiz:</strong> {{ player.num_correct_answers }}/{{player.num_quiz_questions}}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Fee per correct answer:</strong> {{ session.config.fee_per_correct_answer }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Payoff for quiz:</strong> {{ player.payoff_for_quiz }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Total points (trade + bonuses + quiz):</strong> {{ nonlottery_points }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Total points including lottery:</strong> {{ total_points }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Exchange rate:</strong> 1 point = {{ exchange_rate }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Cash bonus (points × rate):</strong> {{ cash_bonus }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Participation fee:</strong> {{ participation_fee }}
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Your total bonus in real money:</strong> {{ total_real }}
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{ next_button }}
+
+{% endblock %}

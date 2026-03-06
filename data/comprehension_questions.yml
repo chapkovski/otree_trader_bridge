@@ -1,0 +1,94 @@
+requiredText: ""
+showPageTitles: false
+title: Investment Game Comprehension Quiz
+showQuestionNumbers: off
+completeText: Next
+showCompletedPage: false
+completedHtml: "<h4>Congratulations! You answered all questions correctly.</h4>"
+pages:
+  - name: page1
+    elements:
+      - type: radiogroup
+        name: q1
+        title: "At the end of each period, the asset pays a dividend. Which of the following statements is correct?"
+        validators:
+          - type: expression
+            text: "Please check your answer."
+            expression: "{q1} = 'b'"
+        choices:
+          - value: a
+            text: "The dividend is always {dividend_constant_wrong}."
+          - value: b
+            text: "The dividend is equally likely to be {dividend_values_text}."
+          - value: c
+            text: "The dividend depends on the asset's trading price."
+          - value: d
+            text: "The dividend is determined by your trading activity."
+
+      - type: radiogroup
+        name: q2
+        title: "At the end of each period, you will forecast the stock price for the next period. When do you earn a bonus?"
+        validators:
+          - type: expression
+            text: "Please check your answer."
+            expression: "{q2} = 'd'"
+        choices:
+          - value: a
+            text: "If your forecast is within {forecast_bonus_wrong_pct}% of the realized price."
+          - value: b
+            text: "If your forecast exactly equals the realized price."
+          - value: c
+            text: "You earn E${forecast_bonus_amount} for every forecast submitted."
+          - value: d
+            text: "If your forecast is within {forecast_bonus_threshold_pct}% of the realized price."
+
+      - type: radiogroup
+        name: q3
+        title: "Suppose the dividend in period {example_period_current} is {example_dividend}. How does this affect the fundamental value in period {example_period_next}?"
+        validators:
+          - type: expression
+            text: "Please check your answer."
+            expression: "{q3} = 'b'"
+        choices:
+          - value: a
+            text: "The fundamental value increases by {example_dividend}."
+          - value: b
+            text: "The fundamental value is unaffected by the realized dividend."
+          - value: c
+            text: "The fundamental value decreases by {example_dividend}."
+          - value: d
+            text: "The fundamental value equals {example_dividend}."
+
+      - type: radiogroup
+        name: q4
+        title: "Which of the following best describes how your final payoff is determined?"
+        validators:
+          - type: expression
+            text: "Please check your answer."
+            expression: "{q4} = 'c'"
+        choices:
+          - value: a
+            text: "Your cash holdings at the end of period {payoff_period}, including period {payoff_period} dividends."
+          - value: b
+            text: "The number of shares you hold at the end of period {payoff_period}."
+          - value: c
+            text: "Your cash holdings, including period {payoff_period} dividends, plus any forecast bonuses earned."
+          - value: d
+            text: "Your cash holdings at the start of period {payoff_period}, plus any forecast bonuses earned."
+
+      - type: radiogroup
+        name: q5
+        title: "Which of the following actions are not permitted in this market?"
+        validators:
+          - type: expression
+            text: "Please check your answer."
+            expression: "{q5} = 'd'"
+        choices:
+          - value: a
+            text: "Selling shares you do not own (short selling)."
+          - value: b
+            text: "Borrowing cash to purchase additional shares."
+          - value: c
+            text: "Buying shares only if you have sufficient cash."
+          - value: d
+            text: "Both (a) and (b)."

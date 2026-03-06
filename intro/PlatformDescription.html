@@ -1,0 +1,17 @@
+{% block title %}
+Platform overview
+{% endblock %}
+{% block content %}
+{{ if player.user_agent_is_mobile }}
+    <img src="{% static 'global/mobile_description.png' %}" alt="platform description" width="300" class="my-3">
+{{ else }}
+    <img src="{% static 'global/desktop_description.png' %}" alt="platform description" width="800" class="my-3">
+{{ endif }}
+
+
+
+
+
+{{ next_button }}
+
+{% endblock %}

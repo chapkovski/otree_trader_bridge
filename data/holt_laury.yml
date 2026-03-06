@@ -1,0 +1,38 @@
+payoffs:
+  option_a_high: 2.00
+  option_a_low: 1.60
+  option_b_high: 3.85
+  option_b_low: 0.10
+  payoff_draw: 0.5  # probability draw for illustrative payoff; override in tests if needed
+
+rows:
+  - number: 1
+    high_prob: "1/10"
+    low_prob: "9/10"
+  - number: 2
+    high_prob: "2/10"
+    low_prob: "8/10"
+  - number: 3
+    high_prob: "3/10"
+    low_prob: "7/10"
+  - number: 4
+    high_prob: "4/10"
+    low_prob: "6/10"
+  - number: 5
+    high_prob: "5/10"
+    low_prob: "5/10"
+  - number: 6
+    high_prob: "6/10"
+    low_prob: "4/10"
+  - number: 7
+    high_prob: "7/10"
+    low_prob: "3/10"
+  - number: 8
+    high_prob: "8/10"
+    low_prob: "2/10"
+  - number: 9
+    high_prob: "9/10"
+    low_prob: "1/10"
+  - number: 10
+    high_prob: "10/10"
+    low_prob: "0/10"
