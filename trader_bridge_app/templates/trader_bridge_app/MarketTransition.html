@@ -1,0 +1,119 @@
+{% extends "global/Page.html" %}
+{% load otree static %}
+
+{% block title %}
+Next Market
+{% endblock %}
+
+{% block styles %}
+<style>
+  :root {
+    --mt-ink: #1e293b;
+    --mt-muted: #475569;
+    --mt-accent: #0f766e;
+    --mt-panel: #ffffff;
+    --mt-border: #cbd5e1;
+  }
+
+  body,
+  .otree-body {
+    background:
+      radial-gradient(circle at 18% 4%, rgba(15, 118, 110, 0.16), transparent 30%),
+      radial-gradient(circle at 86% 12%, rgba(249, 115, 22, 0.16), transparent 32%),
+      linear-gradient(140deg, #f8fafc, #ecfeff);
+    font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  }
+
+  .market-transition {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 8px 0;
+  }
+
+  .market-transition-card {
+    background: var(--mt-panel);
+    border: 1px solid var(--mt-border);
+    border-radius: 20px;
+    padding: 24px;
+    text-align: center;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.09);
+    animation: mtSlideIn 0.45s ease-out;
+  }
+
+  .market-transition-kicker {
+    margin: 0;
+    color: var(--mt-accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    font-size: 0.78rem;
+  }
+
+  .market-transition-title {
+    margin: 8px 0 0 0;
+    font-size: 1.95rem;
+    line-height: 1.1;
+    color: var(--mt-ink);
+  }
+
+  .market-transition-copy {
+    margin: 12px auto 0 auto;
+    max-width: 620px;
+    color: var(--mt-muted);
+    font-size: 1rem;
+  }
+
+  .market-transition-pill {
+    display: inline-block;
+    margin-top: 14px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1px solid #99f6e4;
+    background: #f0fdfa;
+    color: #0f766e;
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  .market-transition-actions {
+    margin-top: 18px;
+  }
+
+  .market-transition-actions .otree-btn-next {
+    background: linear-gradient(120deg, #14b8a6, #0f766e);
+    border-color: #0f766e;
+    border-radius: 999px;
+    padding: 10px 24px;
+    font-weight: 700;
+  }
+
+  @keyframes mtSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="market-transition">
+  <section class="market-transition-card">
+    <p class="market-transition-kicker">Market {{ completed_market }} Complete</p>
+    <h2 class="market-transition-title">Market {{ next_market }} Is Starting</h2>
+    <p class="market-transition-copy">
+      The next market contains {{ days_per_market }} trading days. Click Next to continue to setup.
+    </p>
+    <div class="market-transition-pill">
+      Market {{ next_market }} of {{ total_markets }}
+    </div>
+    <div class="market-transition-actions">
+      {{ next_button }}
+    </div>
+  </section>
+</div>
+{% endblock %}

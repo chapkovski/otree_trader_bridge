@@ -30,7 +30,7 @@ class C(BaseConstants):
     Attributes:
         NAME_IN_URL (str): URL identifier for the app.
         PLAYERS_PER_GROUP (None): No group structure enforced.
-        NUM_ROUNDS (int): Number of rounds, read from NUM_ROUNDS environment variable (default: 2).
+        NUM_ROUNDS (int): Total rounds across all markets.
         
         DEFAULT_TRADING_API_BASE (str): Base URL for the trading API server.
         DEFAULT_API_TIMEOUT_SECONDS (int): Timeout duration for API requests in seconds.
@@ -53,7 +53,9 @@ class C(BaseConstants):
     """
     NAME_IN_URL = "trader_bridge"
     PLAYERS_PER_GROUP = None
-    NUM_ROUNDS = int(os.getenv("NUM_ROUNDS", 2))
+    NUM_MARKETS = max(1, int(os.getenv("NUM_MARKETS", 2)))
+    DAYS_PER_MARKET = max(1, int(os.getenv("DAYS_PER_MARKET", 15)))
+    NUM_ROUNDS = int(os.getenv("NUM_ROUNDS", NUM_MARKETS * DAYS_PER_MARKET))
 
     DEFAULT_TRADING_API_BASE = "http://127.0.0.1:8001"
     DEFAULT_API_TIMEOUT_SECONDS = 20
@@ -82,7 +84,7 @@ class C(BaseConstants):
         "gm": "hybrid",
         "nm": "hybrid",
     }
-    DEFAULT_NUM_DAYS = NUM_ROUNDS
+    DEFAULT_NUM_DAYS = DAYS_PER_MARKET
     DEFAULT_HUMAN_TRADER_ENDOWMENTS = (
         (2600.0, 20),
         (3800.0, 10),
@@ -122,6 +124,7 @@ class Player(BasePlayer):
 
 
 def creating_session(subsession: Subsession):
+    _validate_market_structure()
     _log(
         "creating_session start",
         round_number=subsession.round_number,
@@ -195,11 +198,46 @@ def _set_group_treatment(group: Group, treatment: str):
     group.group_composition = C.TREATMENT_GROUP_COMPOSITION[treatment_value]
 
 
+def _expected_total_rounds():
+    return int(C.NUM_MARKETS * C.DAYS_PER_MARKET)
+
+
+def _validate_market_structure():
+    expected = _expected_total_rounds()
+    if int(C.NUM_ROUNDS) != expected:
+        raise RuntimeError(
+            f"NUM_ROUNDS={C.NUM_ROUNDS} must equal NUM_MARKETS*DAYS_PER_MARKET={expected}."
+        )
+
+
+def _market_number_for_round(round_number):
+    day = max(1, _as_int(round_number, 1))
+    return ((day - 1) // C.DAYS_PER_MARKET) + 1
+
+
+def _day_in_market(round_number):
+    day = max(1, _as_int(round_number, 1))
+    return ((day - 1) % C.DAYS_PER_MARKET) + 1
+
+
+def _market_start_round(round_number):
+    market_number = _market_number_for_round(round_number)
+    return ((market_number - 1) * C.DAYS_PER_MARKET) + 1
+
+
+def _is_first_round_of_market(round_number):
+    return _day_in_market(round_number) == 1
+
+
+def _is_last_round_of_market(round_number):
+    return _day_in_market(round_number) == C.DAYS_PER_MARKET
+
+
 def _resolve_num_days(cfg):
     num_days = max(1, _as_int(cfg.get("num_days", C.DEFAULT_NUM_DAYS), C.DEFAULT_NUM_DAYS))
-    if num_days != C.NUM_ROUNDS:
+    if num_days != C.DAYS_PER_MARKET:
         raise RuntimeError(
-            f"Session config num_days={num_days} must equal oTree NUM_ROUNDS={C.NUM_ROUNDS}."
+            f"Session config num_days={num_days} must equal DAYS_PER_MARKET={C.DAYS_PER_MARKET}."
         )
     return num_days
 
@@ -305,14 +343,23 @@ def _build_initiate_payload(group: Group, players):
     num_noise_traders = max(0, hybrid_noise_traders)
     num_days = _resolve_num_days(cfg)
     day_duration_minutes = _resolve_day_duration_minutes(cfg, C.DEFAULT_TRADING_DAY_DURATION)
-    dividends = _load_dividend_schedule(cfg)
+    all_dividends = _load_dividend_schedule(cfg)
+    required_days = C.NUM_ROUNDS
+    if len(all_dividends) < required_days:
+        raise RuntimeError(
+            f"Dividend schedule has {len(all_dividends)} values but requires at least {required_days}."
+        )
+    all_dividends = [float(x) for x in all_dividends[:required_days]]
+    market_number = _market_number_for_round(group.subsession.round_number)
+    market_start_idx = (market_number - 1) * C.DAYS_PER_MARKET
+    market_end_idx = market_start_idx + num_days
+    dividends = all_dividends[market_start_idx:market_end_idx]
     if len(dividends) < num_days:
         raise RuntimeError(
-            f"Dividend schedule has {len(dividends)} values but num_days={num_days}."
+            f"Dividend schedule slice for market {market_number} has {len(dividends)} values but needs {num_days}."
         )
-    dividends = [float(x) for x in dividends[:num_days]]
     group.num_days = num_days
-    group.dividends_csv = json.dumps(dividends)
+    group.dividends_csv = json.dumps(all_dividends)
     human_trader_params = [
         {
             "initial_cash": float(_as_float(player.assigned_initial_cash, C.DEFAULT_INITIAL_CASH)),
@@ -379,30 +426,36 @@ def _group_init_error(group: Group) -> str:
     return str(group.field_maybe_none("trading_init_error") or "")
 
 
-def _copy_round_1_trading_state(group: Group):
-    round_1_group = group.in_round(1)
-    group.trading_session_uuid = round_1_group.trading_session_uuid
-    group.trading_api_base = round_1_group.trading_api_base
-    group.trading_ws_base = round_1_group.trading_ws_base
-    group.trading_day_duration_minutes = round_1_group.trading_day_duration_minutes
-    group.num_days = round_1_group.num_days
-    group.dividends_csv = round_1_group.dividends_csv
-    group.trading_init_error = _group_init_error(round_1_group)
+def _copy_market_start_trading_state(group: Group):
+    source_round = _market_start_round(group.subsession.round_number)
+    source_group = group.in_round(source_round)
+    group.trading_session_uuid = source_group.trading_session_uuid
+    group.trading_api_base = source_group.trading_api_base
+    group.trading_ws_base = source_group.trading_ws_base
+    group.trading_day_duration_minutes = source_group.trading_day_duration_minutes
+    group.num_days = source_group.num_days
+    group.dividends_csv = source_group.dividends_csv
+    group.trading_init_error = _group_init_error(source_group)
     for player in group.get_players():
-        round_1_player = player.in_round(1)
-        player.trader_uuid = round_1_player.trader_uuid or str(player.participant.vars.get("trader_uuid") or "")
+        source_player = player.in_round(source_round)
+        player.trader_uuid = source_player.trader_uuid or str(player.participant.vars.get("trader_uuid") or "")
         player.assigned_initial_cash = _as_float(
-            round_1_player.assigned_initial_cash,
+            source_player.assigned_initial_cash,
             _as_float(player.participant.vars.get("assigned_initial_cash"), C.DEFAULT_INITIAL_CASH),
         )
         player.assigned_initial_shares = _as_float(
-            round_1_player.assigned_initial_shares,
+            source_player.assigned_initial_shares,
             _as_float(player.participant.vars.get("assigned_initial_shares"), C.DEFAULT_INITIAL_STOCKS),
         )
         player.participant.vars["assigned_initial_cash"] = player.assigned_initial_cash
         player.participant.vars["assigned_initial_shares"] = player.assigned_initial_shares
         if player.trader_uuid:
             player.participant.vars["trader_uuid"] = player.trader_uuid
+
+
+def _copy_round_1_trading_state(group: Group):
+    # Backward-compatible alias used by older call sites.
+    _copy_market_start_trading_state(group)
 
 
 def _fetch_trader_info(group: Group, trader_uuid: str):
@@ -578,15 +631,15 @@ class SyncTradingSession(WaitPage):
 
     @staticmethod
     def is_displayed(player: Player):
-        return player.round_number == 1
+        return _is_first_round_of_market(player.round_number)
 
 
 def resume_trading_after_wait(group: Group):
-    _copy_round_1_trading_state(group)
+    _copy_market_start_trading_state(group)
     if _group_init_error(group):
         return
     if not group.trading_session_uuid:
-        group.trading_init_error = "Missing round-1 trading session UUID; cannot resume."
+        group.trading_init_error = "Missing market-start trading session UUID; cannot resume."
         return
     try:
         result = _resume_trading_session(group)
@@ -609,7 +662,7 @@ def resume_trading_after_wait(group: Group):
 
 
 def pause_trading_after_wait(group: Group):
-    _copy_round_1_trading_state(group)
+    _copy_market_start_trading_state(group)
     if _group_init_error(group):
         return
     if not group.trading_session_uuid:
@@ -644,7 +697,7 @@ class PauseTradingSession(WaitPage):
     @staticmethod
     def is_displayed(player: Player):
         return (
-            player.round_number < C.NUM_ROUNDS
+            not _is_last_round_of_market(player.round_number)
             and not _group_init_error(player.group)
             and bool(player.trader_uuid)
         )
@@ -657,7 +710,7 @@ class ResumeTradingSession(WaitPage):
 
     @staticmethod
     def is_displayed(player: Player):
-        return player.round_number > 1
+        return player.round_number > 1 and not _is_first_round_of_market(player.round_number)
 
 
 class InitFailed(Page):
@@ -698,6 +751,8 @@ class TradePage(Page):
         ws_url = f"{player.group.trading_ws_base}/trader/{player.trader_uuid}"
         gamified = player.group.market_design == "gamified"
         day_duration_minutes = _resolve_day_duration_minutes(player.session.config, C.DEFAULT_TRADING_DAY_DURATION)
+        market_number = _market_number_for_round(player.round_number)
+        day_in_market = _day_in_market(player.round_number)
         return dict(
             wsUrl=ws_url,
             wsBase=player.group.trading_ws_base,
@@ -710,18 +765,20 @@ class TradePage(Page):
             treatment=player.group.treatment,
             marketDesign=player.group.market_design,
             groupComposition=player.group.group_composition,
-            roundNumber=player.round_number,
-            totalRounds=C.NUM_ROUNDS,
+            marketNumber=market_number,
+            totalMarkets=C.NUM_MARKETS,
+            roundNumber=day_in_market,
+            totalRounds=C.DAYS_PER_MARKET,
             dayDurationMinutes=day_duration_minutes,
         )
 
     @staticmethod
     def get_timeout_seconds(player: Player):
         duration_minutes = _resolve_day_duration_minutes(player.session.config, C.DEFAULT_TRADING_DAY_DURATION)
-        # Day 1 is a hard stop to intermission; final day includes small closure buffer.
-        if player.round_number < C.NUM_ROUNDS:
-            return max(15, int(duration_minutes * 60))
-        return max(15, int(duration_minutes * 60) + 30)
+        # Each market's last day gets a small closure buffer.
+        if _is_last_round_of_market(player.round_number):
+            return max(15, int(duration_minutes * 60) + 30)
+        return max(15, int(duration_minutes * 60))
 
 
 class DayBreak(Page):
@@ -731,18 +788,20 @@ class DayBreak(Page):
     @staticmethod
     def is_displayed(player: Player):
         return (
-            player.round_number < C.NUM_ROUNDS
+            not _is_last_round_of_market(player.round_number)
             and not _group_init_error(player.group)
             and bool(player.trader_uuid)
         )
 
     @staticmethod
     def vars_for_template(player: Player):
-        _copy_round_1_trading_state(player.group)
+        _copy_market_start_trading_state(player.group)
+        market_number = _market_number_for_round(player.round_number)
+        completed_day = _day_in_market(player.round_number)
         return dict(
-            market_number=1,
-            completed_day=player.round_number,
-            next_day=player.round_number + 1,
+            market_number=market_number,
+            completed_day=completed_day,
+            next_day=completed_day + 1,
             current_cash=player.current_cash,
             num_shares=player.num_shares,
             dividend=player.dividend_per_share,
@@ -773,6 +832,23 @@ class DayBreak(Page):
         return None
 
 
+class MarketTransition(Page):
+    @staticmethod
+    def is_displayed(player: Player):
+        market_number = _market_number_for_round(player.round_number)
+        return _is_last_round_of_market(player.round_number) and market_number < C.NUM_MARKETS
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        completed_market = _market_number_for_round(player.round_number)
+        return dict(
+            completed_market=completed_market,
+            next_market=completed_market + 1,
+            total_markets=C.NUM_MARKETS,
+            days_per_market=C.DAYS_PER_MARKET,
+        )
+
+
 class Results(Page):
     @staticmethod
     def is_displayed(player: Player):
@@ -780,7 +856,7 @@ class Results(Page):
 
     @staticmethod
     def vars_for_template(player: Player):
-        _copy_round_1_trading_state(player.group)
+        _copy_market_start_trading_state(player.group)
         final_cash = _as_float(player.field_maybe_none("cash_after_dividend"), 0.0)
         total_shares = _as_float(player.field_maybe_none("num_shares"), 0.0)
         available_shares = total_shares
@@ -802,8 +878,8 @@ class Results(Page):
         delta_cash = final_cash - initial_cash
 
         return dict(
-            market_number=1,
-            total_days=C.NUM_ROUNDS,
+            market_number=_market_number_for_round(player.round_number),
+            total_days=C.DAYS_PER_MARKET,
             final_cash=final_cash,
             initial_cash=initial_cash,
             delta_cash=delta_cash,
@@ -821,6 +897,7 @@ page_sequence = [
     TradePage,
     PauseTradingSession,
     DayBreak,
+    MarketTransition,
     Results,
 ]
 
