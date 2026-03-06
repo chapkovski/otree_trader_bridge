@@ -5,7 +5,7 @@ SESSION_CONFIGS = [
     dict(
         name="trader_bridge_demo",
         display_name="Trader Bridge Demo",
-        num_demo_participants=8,
+        num_demo_participants=2,
         players_per_group=2,
         app_sequence=["trader_bridge_app"],
         trading_api_base=environ.get("TRADING_API_BASE", "http://localhost:8001"),

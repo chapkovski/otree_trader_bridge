@@ -54,7 +54,7 @@ class C(BaseConstants):
     NAME_IN_URL = "trader_bridge"
     PLAYERS_PER_GROUP = None
     NUM_MARKETS = max(1, int(os.getenv("NUM_MARKETS", 2)))
-    DAYS_PER_MARKET = max(1, int(os.getenv("DAYS_PER_MARKET", 15)))
+    DAYS_PER_MARKET = max(1, int(os.getenv("DAYS_PER_MARKET", 1)))
     NUM_ROUNDS = int(os.getenv("NUM_ROUNDS", NUM_MARKETS * DAYS_PER_MARKET))
 
     DEFAULT_TRADING_API_BASE = "http://127.0.0.1:8001"
@@ -138,6 +138,18 @@ def creating_session(subsession: Subsession):
             group.treatment = round_1_group.treatment
             group.market_design = round_1_group.market_design
             group.group_composition = round_1_group.group_composition
+            for player in group.get_players():
+                round_1_player = player.in_round(1)
+                player.assigned_initial_cash = _as_float(
+                    round_1_player.assigned_initial_cash,
+                    _as_float(player.participant.vars.get("assigned_initial_cash"), C.DEFAULT_INITIAL_CASH),
+                )
+                player.assigned_initial_shares = _as_float(
+                    round_1_player.assigned_initial_shares,
+                    _as_float(player.participant.vars.get("assigned_initial_shares"), C.DEFAULT_INITIAL_STOCKS),
+                )
+                player.participant.vars["assigned_initial_cash"] = player.assigned_initial_cash
+                player.participant.vars["assigned_initial_shares"] = player.assigned_initial_shares
         _log("creating_session copied group matrix + treatments from round 1", round_number=subsession.round_number)
         return
 
@@ -775,9 +787,7 @@ class TradePage(Page):
     @staticmethod
     def get_timeout_seconds(player: Player):
         duration_minutes = _resolve_day_duration_minutes(player.session.config, C.DEFAULT_TRADING_DAY_DURATION)
-        # Each market's last day gets a small closure buffer.
-        if _is_last_round_of_market(player.round_number):
-            return max(15, int(duration_minutes * 60) + 30)
+        # Keep day timeout equal to configured day duration for every trading day.
         return max(15, int(duration_minutes * 60))
 
 
@@ -852,7 +862,7 @@ class MarketTransition(Page):
 class Results(Page):
     @staticmethod
     def is_displayed(player: Player):
-        return player.round_number == C.NUM_ROUNDS
+        return _is_last_round_of_market(player.round_number)
 
     @staticmethod
     def vars_for_template(player: Player):
@@ -897,8 +907,8 @@ page_sequence = [
     TradePage,
     PauseTradingSession,
     DayBreak,
-    MarketTransition,
     Results,
+    MarketTransition,
 ]
 
 from .export import (
