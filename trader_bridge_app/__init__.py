@@ -122,10 +122,7 @@ def _instruction_context(player):
     fundamental_value_start = expected_dividend * num_days
     fundamental_value_last = expected_dividend
     group_composition = str(getattr(getattr(player, "group", None), "group_composition", "") or "").strip().lower()
-    participant_condition = str(getattr(player.participant, "vars", {}).get("condition", "") or "").strip().lower()
-    has_algorithmic_traders = (
-        group_composition == "hybrid" or participant_condition in {"hybrid", "gm", "nm"}
-    )
+    has_algorithmic_traders = group_composition == "hybrid"
     endowment_options = _parse_endowment_options(cfg.get("human_trader_endowments"))
     exchange_rate = _as_float(cfg.get("real_world_currency_per_point", 1), 1)
     quiz_bonus_per_correct = _as_float(cfg.get("fee_per_correct_answer", 1), 1)
@@ -205,7 +202,7 @@ class C(BaseConstants):
         TREATMENT_GROUP_COMPOSITION (dict): Maps treatments to group composition types (human_only or hybrid).
     """
     NAME_IN_URL = "trader_bridge"
-    PLAYERS_PER_GROUP = None
+    PLAYERS_PER_GROUP = max(2, int(os.getenv("PLAYERS_PER_GROUP", 2)))
     NUM_MARKETS = max(1, int(os.getenv("NUM_MARKETS", 2)))
     DAYS_PER_MARKET = max(1, int(os.getenv("DAYS_PER_MARKET", 2)))
     NUM_ROUNDS = int(os.getenv("NUM_ROUNDS", NUM_MARKETS * DAYS_PER_MARKET))
@@ -222,7 +219,7 @@ class C(BaseConstants):
     DEFAULT_ALERT_STREAK_FREQUENCY = 3
     DEFAULT_ALERT_WINDOW_SIZE = 5
     DEFAULT_ALLOW_SELF_TRADE = True
-    DEFAULT_GROUP_SIZE = 2
+    DEFAULT_GROUP_SIZE = PLAYERS_PER_GROUP
     DEFAULT_HYBRID_NOISE_TRADERS = 1
     DEFAULT_FORECAST_BONUS_AMOUNT = 1
     DEFAULT_FORECAST_BONUS_THRESHOLD_PCT = 1
@@ -338,25 +335,22 @@ def creating_session(subsession: Subsession):
 
     _log("creating_session players loaded", player_ids=[p.id_in_subsession for p in players], num_players=len(players))
 
-    desired_size = _as_int(subsession.session.config.get("players_per_group", C.DEFAULT_GROUP_SIZE), C.DEFAULT_GROUP_SIZE)
-    desired_size = max(2, desired_size)
-    _log("creating_session using group size", requested=subsession.session.config.get("players_per_group"), applied=desired_size)
-
-    matrix = []
-    for idx in range(0, len(players), desired_size):
-        matrix.append(players[idx: idx + desired_size])
-    subsession.set_group_matrix(matrix)
-    _log(
-        "creating_session group matrix set",
-        group_sizes=[len(g) for g in matrix],
-        groups=[[p.id_in_subsession for p in g] for g in matrix],
-    )
-
     configured_treatments = _parse_treatments(subsession.session.config.get("treatments"))
     groups = subsession.get_groups()
     for idx, group in enumerate(groups):
-        treatment = configured_treatments[idx % len(configured_treatments)]
-        _set_group_treatment(group, treatment)
+        players_in_group = group.get_players()
+        intro_treatment = ""
+        if players_in_group:
+            intro_treatment = str(players_in_group[0].participant.vars.get("treatment", "") or "").strip().lower()
+        if intro_treatment in C.TREATMENTS:
+            _set_group_treatment(group, intro_treatment)
+        else:
+            treatment = configured_treatments[idx % len(configured_treatments)]
+            _set_group_treatment(group, treatment)
+        for player in players_in_group:
+            player.participant.vars["treatment"] = group.treatment
+            player.participant.vars["market_design"] = group.market_design
+            player.participant.vars["group_composition"] = group.group_composition
         _assign_player_endowments(group)
     _log(
         "creating_session assigned treatments",

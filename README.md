@@ -6,7 +6,7 @@ This folder is a standalone oTree project with one app (`trader_bridge_app`) tha
 2. Calls the external trading backend (`POST /trading/initiate`) with:
    - `num_human_traders = group size`
    - `num_days = NUM_ROUNDS`
-   - per-day `dividends` array (from `trader_bridge_app/data/dividends.csv`)
+   - per-day `dividends` array (from `data/dividends.csv`)
    - per-human `human_trader_params` (`initial_cash`, `initial_stocks`)
 3. Stores one `trader_uuid` per `Player` in the oTree database.
 4. Renders a websocket-based trading page using `js_vars`.
@@ -48,6 +48,39 @@ SESSION_CONFIGS = [
 ```
 
 ## Local Development
+
+### Environment Variables
+
+`settings.py` now auto-loads `otree_trader_bridge/.env` (if present) before reading config.
+
+1. Create local env file:
+```bash
+cd otree_trader_bridge
+cp .env.example .env
+```
+
+2. Update values in `.env` (example):
+```bash
+TRADING_API_BASE=https://london-trader-6b45bffdcd02.herokuapp.com
+PLAYERS_PER_GROUP=2
+OTREE_ADMIN_PASSWORD=replace-me
+```
+
+3. Sync `.env` values to Heroku config vars:
+```bash
+cd otree_trader_bridge
+make heroku-config-set
+```
+
+Dry-run command preview:
+```bash
+make heroku-config-set-dry-run
+```
+
+Optional: override app explicitly:
+```bash
+make heroku-config-set APP=<your-heroku-app>
+```
 
 Run both services in parallel:
 

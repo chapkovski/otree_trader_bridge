@@ -9,3 +9,8 @@ __pycache__/
 
 # Local oTree database
 db.sqlite3
+
+# Local environment
+.env
+.env.*
+!.env.example

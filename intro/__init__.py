@@ -184,8 +184,8 @@ def _experiment_params(player: "Player"):
     expected_dividend = sum(quiz_dividend_values) / max(1, len(quiz_dividend_values))
     fundamental_value_start = expected_dividend * days_per_market
     fundamental_value_last = expected_dividend
-    participant_condition = str(player.participant.vars.get("condition", "") or "").strip().lower()
-    has_algorithmic_traders = participant_condition in {"hybrid", "gm", "nm"}
+    group_composition = str(player.participant.vars.get("group_composition", "") or "").strip().lower()
+    has_algorithmic_traders = group_composition == "hybrid"
     endowment_options = _parse_endowment_options(
         cfg.get("human_trader_endowments"),
         C.DEFAULT_HUMAN_TRADER_ENDOWMENTS,
@@ -306,7 +306,7 @@ class Page(oTreePage):
         r['endowment'] = self.session.config.get('endowment', 100)
         r['belief_bonus_amount'] = self.session.config.get('belief_bonus_amount', 1)
         r['forecast_bonus_amount'] = self.session.config.get('forecast_bonus_amount', 1)
-        r['condition'] = self.participant.vars.get('condition', 'control')
+        r['condition'] = self.participant.vars.get('condition', 'gh')
         r.update(exp_params)
         return r
 
@@ -334,16 +334,29 @@ class SurveyJSPage(Page):
 
 class C(BaseConstants):
     NAME_IN_URL = 'intro'
-    PLAYERS_PER_GROUP = None
+    PLAYERS_PER_GROUP = max(2, int(os.getenv("PLAYERS_PER_GROUP", 2)))
     NUM_ROUNDS = 1
-    CONDITION_PATTERN = ["control", "treatment", "treatment", "treatment"]
+    TREATMENTS = ("gh", "nh", "gm", "nm")
+    WEIGHTED_TREATMENT_SEQUENCE = ("gh", "gh", "nh", "nh", "gm", "nm")
+    TREATMENT_MARKET_DESIGN = {
+        "gh": "gamified",
+        "gm": "gamified",
+        "nh": "non_gamified",
+        "nm": "non_gamified",
+    }
+    TREATMENT_GROUP_COMPOSITION = {
+        "gh": "human_only",
+        "nh": "human_only",
+        "gm": "hybrid",
+        "nm": "hybrid",
+    }
     DEFAULT_NUM_MARKETS = max(1, int(os.getenv("NUM_MARKETS", 2)))
     DEFAULT_DAYS_PER_MARKET = max(1, int(os.getenv("DAYS_PER_MARKET", 2)))
     DEFAULT_TRADING_DAY_DURATION = 1
     DEFAULT_FORECAST_BONUS_AMOUNT = 1
     DEFAULT_FORECAST_BONUS_THRESHOLD_PCT = 1
     DEFAULT_HYBRID_NOISE_TRADERS = 1
-    DEFAULT_GROUP_SIZE = 2
+    DEFAULT_GROUP_SIZE = PLAYERS_PER_GROUP
     DEFAULT_DIVIDEND_VALUES = (0, 4, 8, 20)
     DEFAULT_HUMAN_TRADER_ENDOWMENTS = (
         (2600.0, 20),
@@ -356,19 +369,45 @@ class Subsession(BaseSubsession):
 
 
 class Group(BaseGroup):
-    pass
+    treatment = models.StringField(initial="gh")
+    market_design = models.StringField(initial="gamified")
+    group_composition = models.StringField(initial="human_only")
+
+
+def _parse_treatments(raw_value):
+    if raw_value is None:
+        return list(C.WEIGHTED_TREATMENT_SEQUENCE)
+    if isinstance(raw_value, str):
+        candidate_values = [x.strip().lower() for x in raw_value.split(",")]
+    elif isinstance(raw_value, (list, tuple)):
+        candidate_values = [str(x).strip().lower() for x in raw_value]
+    else:
+        return list(C.WEIGHTED_TREATMENT_SEQUENCE)
+    filtered = [x for x in candidate_values if x in C.TREATMENTS]
+    return filtered or list(C.WEIGHTED_TREATMENT_SEQUENCE)
+
+
+def _set_group_treatment(group: Group, treatment: str):
+    treatment_value = str(treatment or "").strip().lower()
+    if treatment_value not in C.TREATMENTS:
+        treatment_value = C.WEIGHTED_TREATMENT_SEQUENCE[0]
+    group.treatment = treatment_value
+    group.market_design = C.TREATMENT_MARKET_DESIGN[treatment_value]
+    group.group_composition = C.TREATMENT_GROUP_COMPOSITION[treatment_value]
 
 
 def creating_session(subsession):
     if subsession.round_number != 1:
         return
-    condition_cycle = itertools.cycle(C.CONDITION_PATTERN)
-    for participant in subsession.session.get_participants():
-        if "condition" in participant.vars:
-            continue
-        participant.vars["condition"] = next(condition_cycle)
-    for player in subsession.get_players():
-        player.condition = player.participant.vars.get("condition", "control")
+    treatment_cycle = itertools.cycle(_parse_treatments(subsession.session.config.get("treatments")))
+    for group in subsession.get_groups():
+        _set_group_treatment(group, next(treatment_cycle))
+        for player in group.get_players():
+            player.condition = group.treatment
+            player.participant.vars["condition"] = group.treatment
+            player.participant.vars["treatment"] = group.treatment
+            player.participant.vars["market_design"] = group.market_design
+            player.participant.vars["group_composition"] = group.group_composition
 
 
 class Player(BasePlayer):
