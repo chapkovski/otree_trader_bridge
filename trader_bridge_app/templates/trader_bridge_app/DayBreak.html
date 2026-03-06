@@ -10,8 +10,13 @@ Day {{ completed_day }} Complete
 Trading is paused. You finished day {{ completed_day }} in market {{ market_number }}.
 </p>
 <p>
-Current snapshot: cash = <strong>{{ cash }}</strong>, shares = <strong>{{ shares }}</strong>,
-announced dividend = <strong>{{ dividend }}</strong>.
+Current snapshot: cash = <strong>{{ current_cash }}</strong>, shares = <strong>{{ num_shares }}</strong>.
+</p>
+<p>
+Dividend per share = <strong>{{ dividend }}</strong>, dividend cash = <strong>{{ dividend_cash }}</strong>.
+</p>
+<p>
+Cash after dividend = <strong>{{ cash_after_dividend }}</strong>.
 </p>
 {% if snapshot_error %}
   <p><em>Snapshot warning: {{ snapshot_error }}</em></p>
