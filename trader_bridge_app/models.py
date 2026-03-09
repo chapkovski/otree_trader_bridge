@@ -1,0 +1,35 @@
+from otree.api import BaseGroup, BasePlayer, BaseSubsession, models
+
+from .constants import C
+
+
+class Subsession(BaseSubsession):
+    pass
+
+
+class Group(BaseGroup):
+    trading_session_uuid = models.StringField(blank=True)
+    trading_api_base = models.StringField(blank=True)
+    trading_ws_base = models.StringField(blank=True)
+    trading_init_error = models.LongStringField(blank=True)
+    trading_day_duration_minutes = models.IntegerField(initial=C.DEFAULT_TRADING_DAY_DURATION)
+    treatment = models.StringField(initial="gh")
+    market_design = models.StringField(initial="gamified")
+    group_composition = models.StringField(initial="human_only")
+    num_days = models.IntegerField(initial=C.DEFAULT_NUM_DAYS)
+    dividends_csv = models.LongStringField(blank=True)
+
+
+class Player(BasePlayer):
+    trader_uuid = models.StringField(blank=True)
+    current_cash = models.FloatField(initial=0)
+    num_shares = models.FloatField(initial=0)
+    dividend_per_share = models.FloatField(initial=0)
+    dividend_cash = models.FloatField(initial=0)
+    cash_after_dividend = models.FloatField(initial=0)
+    daybreak_snapshot_error = models.LongStringField(blank=True)
+    assigned_initial_cash = models.FloatField(initial=0)
+    assigned_initial_shares = models.FloatField(initial=0)
+    forecast_price_next_day = models.FloatField(blank=True)
+    forecast_confidence_next_day = models.IntegerField(blank=True)
+    forecast_survey_json = models.LongStringField(blank=True)

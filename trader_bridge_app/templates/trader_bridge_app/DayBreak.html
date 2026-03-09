@@ -177,8 +177,11 @@ Day Break
   <section class="daybreak-hero">
     <p class="daybreak-kicker">Market [[ marketNumber ]]</p>
     <h2 class="daybreak-title">Day [[ completedDay ]] Closed</h2>
-    <p class="daybreak-subtitle">
+    <p v-if="!isFinalDay" class="daybreak-subtitle">
       Dividend is applied and your position snapshot is ready before Day [[ nextDay ]] starts.
+    </p>
+    <p v-else class="daybreak-subtitle">
+      Dividend is applied and this is your final payoff for this market.
     </p>
 
     <div class="daybreak-grid">
@@ -203,13 +206,16 @@ Day Break
     <div class="daybreak-highlight">
       Cash after dividend: [[ money(cashAfterDividend) ]]
     </div>
+    <div v-if="isFinalDay" class="daybreak-warning">
+      Final payoff note: your market payoff is the cash after dividend shown above.
+    </div>
 
     <div v-if="snapshotError" class="daybreak-warning">
       Snapshot warning: [[ snapshotError ]]
     </div>
   </section>
 
-  <section class="survey-card">
+  <section v-if="!isFinalDay" class="survey-card">
     <h3 class="survey-heading">Forecast for Day [[ nextDay ]]</h3>
     <p class="survey-help">
       Submit your expected end-of-day price and confidence. Trading resumes once all participants complete this.
@@ -218,27 +224,30 @@ Day Break
   </section>
 </div>
 
-<input
-  type="hidden"
-  id="id_forecast_price_next_day"
-  name="forecast_price_next_day"
-  value="{{ forecast_price_next_day }}"
-/>
-<input
-  type="hidden"
-  id="id_forecast_confidence_next_day"
-  name="forecast_confidence_next_day"
-  value="{{ forecast_confidence_next_day }}"
-/>
-<input
-  type="hidden"
-  id="id_forecast_survey_json"
-  name="forecast_survey_json"
-  value=""
-/>
+{% if not is_final_day %}
+  <input
+    type="hidden"
+    id="id_forecast_price_next_day"
+    name="forecast_price_next_day"
+    value="{{ forecast_price_next_day }}"
+  />
+  <input
+    type="hidden"
+    id="id_forecast_confidence_next_day"
+    name="forecast_confidence_next_day"
+    value="{{ forecast_confidence_next_day }}"
+  />
+  <input
+    type="hidden"
+    id="id_forecast_survey_json"
+    name="forecast_survey_json"
+    value=""
+  />
+{% endif %}
 <input type="hidden" id="ctx_market_number" value="{{ market_number }}" />
 <input type="hidden" id="ctx_completed_day" value="{{ completed_day }}" />
 <input type="hidden" id="ctx_next_day" value="{{ next_day }}" />
+<input type="hidden" id="ctx_is_final_day" value="{% if is_final_day %}1{% else %}0{% endif %}" />
 <input type="hidden" id="ctx_current_cash" value="{{ current_cash }}" />
 <input type="hidden" id="ctx_num_shares" value="{{ num_shares }}" />
 <input type="hidden" id="ctx_dividend_per_share" value="{{ dividend_per_share }}" />
@@ -264,7 +273,9 @@ Day Break
 
     const app = Vue.createApp({
       data() {
+        const isFinalDay = readCtx("ctx_is_final_day") === "1";
         return {
+          isFinalDay,
           marketNumber: asNumber(readCtx("ctx_market_number"), 1),
           completedDay: asNumber(readCtx("ctx_completed_day"), 1),
           nextDay: asNumber(readCtx("ctx_next_day"), 2),
@@ -287,6 +298,11 @@ Day Break
     });
     app.config.compilerOptions.delimiters = ["[[", "]]"];
     app.mount("#daybreakApp");
+
+    const isFinalDay = readCtx("ctx_is_final_day") === "1";
+    if (isFinalDay) {
+      return;
+    }
 
     const surveyJSON = {
       showPrevButton: false,
@@ -313,8 +329,8 @@ Day Break
               isRequired: true,
               rateMin: 1,
               rateMax: 5,
-              minRateDescription: "1 (Not confident)",
-              maxRateDescription: "5 (Very confident)",
+              minRateDescription: "(Not confident)",
+              maxRateDescription: "(Very confident)",
             },
           ],
         },
