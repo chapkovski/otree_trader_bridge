@@ -5,6 +5,8 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .constants import C
+
 
 def _log(message, **context):
     ts = datetime.now(timezone.utc).isoformat()
@@ -90,6 +92,65 @@ def _extract_quantity_from_transaction_json(transaction_json_raw):
         if value is not None:
             return value
     return ""
+
+
+def _extract_trading_day_from_json(raw):
+    parsed = _parse_json_object(raw)
+    value = parsed.get("trading_day")
+    return _to_int_or_none(value)
+
+
+def _market_number_for_round(round_number):
+    try:
+        day = int(round_number or 0)
+    except (TypeError, ValueError):
+        return None
+    if day <= 0:
+        return None
+    return ((day - 1) // int(C.DAYS_PER_MARKET)) + 1
+
+
+def _group_trading_session_uuid(group):
+    if group is None:
+        return ""
+    field_getter = getattr(group, "field_maybe_none", None)
+    if callable(field_getter):
+        try:
+            value = field_getter("trading_session_uuid")
+            return str(value or "")
+        except Exception:
+            return ""
+    try:
+        return str(getattr(group, "trading_session_uuid", "") or "")
+    except Exception:
+        return ""
+
+
+def _market_number_by_session(players):
+    mapping = {}
+    for player in players or []:
+        group = getattr(player, "group", None)
+        session_uuid = _group_trading_session_uuid(group)
+        if not session_uuid or session_uuid in mapping:
+            continue
+        round_number = getattr(player, "round_number", None)
+        market_number = _market_number_for_round(round_number)
+        if market_number is not None:
+            mapping[session_uuid] = market_number
+    return mapping
+
+
+def _trading_day_by_mbo_key(mbo_rows):
+    mapping = {}
+    for row in mbo_rows or []:
+        session_uuid = str(row["trading_session_uuid"] or "")
+        event_seq = _to_int_or_none(row["event_seq"])
+        if not session_uuid or event_seq is None:
+            continue
+        trading_day = _extract_trading_day_from_json(row["event_json"])
+        if trading_day is not None:
+            mapping[(session_uuid, event_seq)] = trading_day
+    return mapping
 
 
 def custom_export(players):
@@ -465,8 +526,11 @@ def _best_levels_from_active_orders(active_orders_by_id):
 
 
 def custom_export_mbo(players):
+    market_by_session = _market_number_by_session(players)
     yield [
         "trading_session_uuid",
+        "market_number",
+        "trading_day",
         "event_seq",
         "event_ts",
         "record_kind",
@@ -506,8 +570,12 @@ def custom_export_mbo(players):
                         aggressor_side = "B"
                     elif side_text == "ask":
                         aggressor_side = "S"
+            session_uuid = str(row["trading_session_uuid"] or "")
+            trading_day = _extract_trading_day_from_json(row["event_json"])
             yield [
-                str(row["trading_session_uuid"] or ""),
+                session_uuid,
+                market_by_session.get(session_uuid, ""),
+                trading_day if trading_day is not None else "",
                 row["event_seq"],
                 str(row["event_ts"] or ""),
                 str(row["record_kind"] or ""),
@@ -557,6 +625,8 @@ def custom_export_mbo(players):
                 "sort_source": 0,
                 "sort_id": _to_int_or_none(row["row_id"]) or 0,
                 "trading_session_uuid": session_uuid,
+                "market_number": market_by_session.get(session_uuid, ""),
+                "trading_day": "",
                 "event_ts": str(row["timestamp"] or ""),
                 "record_kind": "order",
                 "event_type": event_type,
@@ -598,6 +668,8 @@ def custom_export_mbo(players):
                 "sort_source": 1,
                 "sort_id": _to_int_or_none(row["row_id"]) or 0,
                 "trading_session_uuid": str(row["trading_session_uuid"] or ""),
+                "market_number": market_by_session.get(str(row["trading_session_uuid"] or ""), ""),
+                "trading_day": _extract_trading_day_from_json(row["transaction_json"]) or "",
                 "event_ts": str(row["timestamp"] or ""),
                 "record_kind": "trade",
                 "event_type": "trade",
@@ -627,6 +699,8 @@ def custom_export_mbo(players):
     for idx, event in enumerate(events, start=1):
         yield [
             event["trading_session_uuid"],
+            event["market_number"],
+            event["trading_day"],
             idx,
             event["event_ts"],
             event["record_kind"],
@@ -653,8 +727,11 @@ def custom_export_mbo(players):
 
 
 def custom_export_mbp1(players):
+    market_by_session = _market_number_by_session(players)
     yield [
         "trading_session_uuid",
+        "market_number",
+        "trading_day",
         "event_seq",
         "event_ts",
         "source_mbo_event_seq",
@@ -673,9 +750,16 @@ def custom_export_mbp1(players):
 
     persisted_rows = _fetch_persisted_mbp1_rows()
     if persisted_rows:
+        mbo_rows = _fetch_persisted_mbo_rows()
+        trading_day_by_key = _trading_day_by_mbo_key(mbo_rows)
         for row in persisted_rows:
+            session_uuid = str(row["trading_session_uuid"] or "")
+            source_seq = _to_int_or_none(row["source_mbo_event_seq"])
+            trading_day = trading_day_by_key.get((session_uuid, source_seq), "")
             yield [
-                str(row["trading_session_uuid"] or ""),
+                session_uuid,
+                market_by_session.get(session_uuid, ""),
+                trading_day,
                 row["event_seq"],
                 str(row["event_ts"] or ""),
                 row["source_mbo_event_seq"],
@@ -742,6 +826,8 @@ def custom_export_mbp1(players):
         event_seq += 1
         yield [
             session_uuid,
+            market_by_session.get(session_uuid, ""),
+            "",
             event_seq,
             str(row["timestamp"] or ""),
             row["row_id"],
