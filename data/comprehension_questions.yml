@@ -44,7 +44,6 @@ pages:
 
       - type: radiogroup
         name: q3
-        title: "Suppose the dividend in period {example_period_current} is {example_dividend}. How does this affect the fundamental value in period {example_period_next}?"
         title: "How is the fundamental value related to dividends?"
         validators:
           - type: expression
