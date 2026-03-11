@@ -27,7 +27,7 @@ pages:
 
       - type: radiogroup
         name: q2
-        title: "At the end of each period, you will forecast the stock price for the next period. When do you earn a bonus?"
+        title: "Whenever a forecast is collected, when do you earn a bonus?"
         validators:
           - type: expression
             text: "Please check your answer."

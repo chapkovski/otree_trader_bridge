@@ -19,12 +19,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.inspection import inspect
 from starlette.responses import RedirectResponse
-import yaml
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 countries_path = DATA_DIR / "countries.csv"
 quiz_answers_path = DATA_DIR / "fin_quiz_answers.csv"
-holt_laury_path = DATA_DIR / "holt_laury.yml"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,23 +30,6 @@ logger = logging.getLogger(__name__)
 doc = """
 Post-experimental pages including literacy, demographics, and payout.
 """
-
-
-@lru_cache(maxsize=1)
-def load_holt_laury_rows():
-    if yaml is None:
-        raise RuntimeError("PyYAML is required for Holt-Laury configuration.")
-    if not holt_laury_path.exists():
-        raise FileNotFoundError(f"Holt-Laury YAML not found at {holt_laury_path}")
-    with holt_laury_path.open() as f:
-        data = yaml.safe_load(f) or {}
-    rows = data.get("rows", [])
-    payoffs = data.get("payoffs", {})
-    if not rows:
-        raise RuntimeError("Holt-Laury YAML missing 'rows' entries.")
-    if not payoffs:
-        raise RuntimeError("Holt-Laury YAML missing 'payoffs' entries.")
-    return rows, payoffs
 
 
 @lru_cache(maxsize=1)
@@ -80,40 +61,28 @@ def load_quiz_answer_key():
     return answer_key
 
 
-def draw_holt_laury_outcome(switch_row: int, rng: random.Random | None = None):
-    """Perform Holt-Laury lottery draw and return outcome plus draw details."""
-    rng = rng or random
-    rows, payoffs = load_holt_laury_rows()
-    # Default switch row to after final row if missing
-    effective_switch = switch_row if switch_row is not None else len(rows) + 1
-    drawn_row = rng.choice(rows)
-    row_number = drawn_row.get("number")
-    option = "A" if row_number < effective_switch else "B"
-    high_prob_str = drawn_row.get("high_prob", "0/1")
-    num, den = high_prob_str.split("/")
-    high_prob = float(num) / float(den) if float(den) != 0 else 0.0
-    draw_value = rng.random()
+def resolve_trade_payoff_from_selected_market(participant, payable_market, num_days):
+    target_round = max(1, int(payable_market)) * max(1, int(num_days))
+    try:
+        all_players = participant.get_players()
+    except Exception:
+        return None
 
-    if option == "A":
-        outcome = (
-            payoffs["option_a_high"]
-            if draw_value < high_prob
-            else payoffs["option_a_low"]
-        )
-    else:
-        outcome = (
-            payoffs["option_b_high"]
-            if draw_value < high_prob
-            else payoffs["option_b_low"]
-        )
-
-    details = dict(
-        row_number=row_number,
-        option=option,
-        draw_value=draw_value,
-        high_prob=high_prob,
-    )
-    return outcome, details
+    for candidate in all_players:
+        if not hasattr(candidate, "cash_after_dividend"):
+            continue
+        if int(getattr(candidate, "round_number", 0) or 0) != target_round:
+            continue
+        final_cash = getattr(candidate, "cash_after_dividend", None)
+        if final_cash in (None, "") and hasattr(candidate, "field_maybe_none"):
+            final_cash = candidate.field_maybe_none("cash_after_dividend")
+        if final_cash in (None, ""):
+            continue
+        try:
+            return cu(final_cash)
+        except Exception:
+            return None
+    return None
 
 
 def process_survey_data(player, survey_results):
@@ -210,14 +179,30 @@ class SurveyJSPage(Page):
 
 
 def creating_session(subsession):
+    num_markets = max(1, int(subsession.session.config.get("num_markets", 2) or 2))
+    num_days = max(1, int(subsession.session.config.get("num_days", 1) or 1))
     for p in subsession.get_players():
-        p.payable_round = p.participant.vars.get("payable_round", 1)
-        trade_payoff = p.participant.vars.get("payoff_for_trade", cu(0))
+        payable_market = p.participant.vars.get("payable_market")
+        if payable_market is None:
+            legacy_round = p.participant.vars.get("payable_round")
+            if legacy_round is not None:
+                payable_market = ((int(legacy_round) - 1) // num_days) + 1
+            else:
+                payable_market = random.randint(1, num_markets)
+        payable_market = max(1, min(int(payable_market), num_markets))
+        p.payable_market = payable_market
+        trade_payoff = resolve_trade_payoff_from_selected_market(
+            p.participant,
+            payable_market=payable_market,
+            num_days=num_days,
+        )
+        if trade_payoff is None:
+            trade_payoff = p.participant.vars.get("payoff_for_trade", cu(0))
         p.payoff_for_trade = trade_payoff
         bonus_total = p.participant.vars.get("cumulative_bonuses", cu(0))
         p.participant.vars.setdefault("cumulative_bonuses", bonus_total)
-        p.participant.vars.setdefault("payable_round", p.payable_round)
-        p.participant.vars.setdefault("payoff_for_trade", trade_payoff)
+        p.participant.vars["payable_market"] = payable_market
+        p.participant.vars["payoff_for_trade"] = trade_payoff
 
 
 class C(BaseConstants):
@@ -236,14 +221,8 @@ class Group(BaseGroup):
 
 
 class Player(BasePlayer):
-    payable_round = models.IntegerField()
+    payable_market = models.IntegerField()
     payoff_for_trade = models.CurrencyField()
-    hl_switch_point = models.IntegerField(
-        min=1, max=11, label="Row where you switch to Option B"
-    )
-    hl_draw_row = models.IntegerField(blank=True)
-    hl_draw_option = models.StringField(blank=True)
-    hl_draw_random = models.FloatField(blank=True)
 
     # Literacy Quiz Fields
     savings_interest = models.StringField()
@@ -314,30 +293,6 @@ class Player(BasePlayer):
     pilot_confusing_wording = models.LongStringField()
 
 
-class HoltLaury(Page):
-    form_model = "player"
-    form_fields = ["hl_switch_point"]
-    instructions = False
-
-    @staticmethod
-    def is_displayed(player: Player):
-        return player.round_number == C.NUM_ROUNDS
-
-    @staticmethod
-    def vars_for_template(player: Player):
-        rows, payoffs = load_holt_laury_rows()
-        return dict(rows=rows, payoffs=payoffs)
-
-    @staticmethod
-    def before_next_page(player: Player, timeout_happened):
-        outcome, details = draw_holt_laury_outcome(player.hl_switch_point)
-        player.hl_draw_row = details["row_number"]
-        player.hl_draw_option = details["option"]
-        player.hl_draw_random = details["draw_value"]
-        player.participant.vars["holt_laury_draw"] = details
-        player.participant.vars["payoff_for_holt_laury"] = cu(outcome)
-
-
 class literacyQuiz(SurveyJSPage):
     instructions = False
 
@@ -396,34 +351,25 @@ class Payoff(Page):
         trade_payoff = player.participant.vars.get("payoff_for_trade", cu(0))
         quiz_payoff = player.payoff_for_quiz or cu(0)
         bonus_total = player.participant.vars.get("cumulative_bonuses", cu(0))
-        hl_payoff = player.participant.vars.get("payoff_for_holt_laury", cu(0))
-        nonlottery_points = trade_payoff + quiz_payoff + bonus_total
-        total_points = nonlottery_points + hl_payoff
+        total_points = trade_payoff + quiz_payoff + bonus_total
         fee_per_correct = player.session.config.get("fee_per_correct_answer", 1)
         exchange_rate = player.session.config.get("real_world_currency_per_point", 1)
         participation_fee = player.session.config.get("participation_fee", 0)
+        total_markets = max(1, int(player.session.config.get("num_markets", 2) or 2))
         cash_bonus = total_points * exchange_rate
         total_real = cash_bonus + participation_fee
-        paid_day_label = (
-            player.payable_round - 2
-            if player.payable_round and player.payable_round > 2
-            else player.payable_round
-        )
         return dict(
             trade_payoff=trade_payoff,
             quiz_payoff=quiz_payoff,
             total_points=total_points,
-            nonlottery_points=nonlottery_points,
             cash_bonus=cash_bonus,
             total_real=total_real,
             fee_per_correct=fee_per_correct,
             exchange_rate=exchange_rate,
             participation_fee=participation_fee,
-            paid_day_label=paid_day_label,
-            hl_choice=player.hl_switch_point,
-            hl_draw=hl_payoff,
+            payable_market=player.payable_market,
+            total_markets=total_markets,
             bonus_total=bonus_total,
-            hl_payoff=hl_payoff,
         )
 
     @staticmethod
@@ -431,11 +377,10 @@ class Payoff(Page):
         trade_payoff = player.participant.vars.get("payoff_for_trade", cu(0))
         quiz_payoff = player.participant.vars.get("payoff_for_quiz", cu(0))
         bonus_total = player.participant.vars.get("cumulative_bonuses", cu(0))
-        hl_payoff = player.participant.vars.get("payoff_for_holt_laury", cu(0))
         print(
-            f"INNER COMPONENTS: trade {trade_payoff}, quiz {quiz_payoff}, bonus {bonus_total}, holt laury {hl_payoff}"
+            f"INNER COMPONENTS: trade {trade_payoff}, quiz {quiz_payoff}, bonus {bonus_total}"
         )
-        total = trade_payoff + quiz_payoff + bonus_total + hl_payoff
+        total = trade_payoff + quiz_payoff + bonus_total
         player.payoff = total
         player.participant.payoff = total
         player.participant.vars["total_bonus"] = total
@@ -470,7 +415,6 @@ class FinalForProlific(Page):
 
 
 page_sequence = [
-    HoltLaury,
     literacyQuiz,
     Demographics,
     Payoff,

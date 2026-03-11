@@ -19,7 +19,7 @@
           Each market has <strong>{{ num_days }}</strong> trading period{% if num_days != 1 %}s{% endif %},
           each lasting <strong>{{ trading_day_duration }}</strong> minute{% if trading_day_duration != 1 %}s{% endif %}
           (<strong>{{ market_total_minutes }}</strong> minutes total per market).
-          At the end of each period, you forecast the end-of-period price for the next period.
+          {{ forecast_schedule_text }}
         </li>
         <li>
           At the end of all markets, you complete a financial literacy quiz.
@@ -80,10 +80,10 @@
     <div class="card-body">
       <h5 class="card-title">Price Forecasting</h5>
       <p class="mb-0">
-        At the end of each period, after dividends are paid, you submit a point forecast for next-period end price
+        On forecast daybreaks, after dividends are paid, you submit a point forecast for the next-period end price
         and report confidence. If your forecast is within
         <strong>{{ forecast_bonus_threshold_pct }}%</strong> of the realized price, you earn a bonus of
-        <strong>E${{ forecast_bonus_amount }}</strong>.
+        <strong>E${{ forecast_bonus_amount }}</strong>. {{ forecast_schedule_text }}
       </p>
     </div>
   </div>

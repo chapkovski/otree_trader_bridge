@@ -21,10 +21,6 @@ def load_quiz_answers():
 
 class PlayerBot(Bot):
     def play_round(self):
-
-
-        yield Submission(HoltLaury, dict(hl_switch_point=5), check_html=False)
-
         # Literacy quiz with correct answers to exercise payoff calc
         quiz_answers = load_quiz_answers()
         randomized_answers = quiz_answers
@@ -64,11 +60,10 @@ class PlayerBot(Bot):
 
         trade_payoff = self.participant.vars.get('payoff_for_trade', cu(0))
         cumulative_bonuses = self.participant.vars.get('cumulative_bonuses', cu(0))
-        expected_hl = self.participant.vars.get('payoff_for_holt_laury', cu(0))
         quiz_payoff_expected = cu(len(quiz_answers) * fee_per_correct)
 
-        total_expected = trade_payoff + cumulative_bonuses + quiz_payoff_expected + cu(expected_hl)
-        print(f'components: trade {trade_payoff}, bonuses {cumulative_bonuses}, quiz {quiz_payoff_expected}, holt laury {cu(expected_hl)}   ')
+        total_expected = trade_payoff + cumulative_bonuses + quiz_payoff_expected
+        print(f'components: trade {trade_payoff}, bonuses {cumulative_bonuses}, quiz {quiz_payoff_expected}')
         print("Expected total payoff:", total_expected)
         print("Participant total bonus:", self.participant.vars['total_bonus'])
 

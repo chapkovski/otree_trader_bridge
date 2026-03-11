@@ -141,6 +141,7 @@ def _instruction_context(player):
         payoff_period=num_days,
         exchange_rate_text=_format_number(exchange_rate),
         quiz_bonus_per_correct_text=_format_number(quiz_bonus_per_correct),
+        forecast_schedule_text=_forecast_schedule_text(num_days),
     )
 
 
@@ -283,6 +284,30 @@ def _is_first_round_of_market(round_number):
 
 def _is_last_round_of_market(round_number):
     return _day_in_market(round_number) == C.DAYS_PER_MARKET
+
+
+def _forecast_days(n_days):
+    total_days = max(1, _as_int(n_days, C.DAYS_PER_MARKET))
+    if total_days <= 3:
+        return [1]
+    return list(range(3, total_days, 3))
+
+
+def _should_elicit_forecast(round_number, n_days):
+    total_days = max(1, _as_int(n_days, C.DAYS_PER_MARKET))
+    completed_day = _day_in_market(round_number)
+    if completed_day >= total_days:
+        return False
+    return completed_day in _forecast_days(total_days)
+
+
+def _forecast_schedule_text(n_days):
+    total_days = max(1, _as_int(n_days, C.DAYS_PER_MARKET))
+    if total_days == 1:
+        return "This market has one period, so no forecast is collected."
+    forecast_days = _forecast_days(total_days)
+    period_label = "period" if len(forecast_days) == 1 else "periods"
+    return f"You submit forecasts only after {period_label} {_natural_join(forecast_days)}."
 
 
 def _resolve_num_days(cfg):
@@ -802,7 +827,8 @@ class DayBreak(Page):
 
     @staticmethod
     def get_form_fields(player: Player):
-        if _is_last_round_of_market(player.round_number):
+        num_days = max(1, _as_int(player.group.field_maybe_none("num_days"), C.DAYS_PER_MARKET))
+        if not _should_elicit_forecast(player.round_number, num_days):
             return []
         return ["forecast_price_next_day", "forecast_confidence_next_day", "forecast_survey_json"]
 
@@ -811,7 +837,9 @@ class DayBreak(Page):
         _copy_market_start_trading_state(player.group)
         market_number = _market_number_for_round(player.round_number)
         completed_day = _day_in_market(player.round_number)
+        num_days = max(1, _as_int(player.group.field_maybe_none("num_days"), C.DAYS_PER_MARKET))
         is_final_day = _is_last_round_of_market(player.round_number)
+        should_elicit_forecast = _should_elicit_forecast(player.round_number, num_days)
         if is_final_day:
             # On the last day there is no pause wait page, so capture final snapshot here.
             _capture_daybreak_state(player.group)
@@ -820,6 +848,7 @@ class DayBreak(Page):
             completed_day=completed_day,
             next_day=(completed_day + 1) if not is_final_day else None,
             is_final_day=is_final_day,
+            should_elicit_forecast=should_elicit_forecast,
             current_cash=player.current_cash,
             num_shares=player.num_shares,
             dividend=player.dividend_per_share,
@@ -833,7 +862,8 @@ class DayBreak(Page):
 
     @staticmethod
     def error_message(player: Player, values):
-        if _is_last_round_of_market(player.round_number):
+        num_days = max(1, _as_int(player.group.field_maybe_none("num_days"), C.DAYS_PER_MARKET))
+        if not _should_elicit_forecast(player.round_number, num_days):
             return None
         price = values.get("forecast_price_next_day")
         confidence = values.get("forecast_confidence_next_day")
