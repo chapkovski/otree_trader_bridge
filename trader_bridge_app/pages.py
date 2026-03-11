@@ -623,7 +623,7 @@ def _capture_daybreak_state(group: Group, observed_last_transaction_price=None):
         observed_last_transaction_price = session_info.get("last_transaction_price")
     group.observed_last_transaction_price = observed_last_transaction_price
     group.closing_price = observed_last_transaction_price
-    _score_previous_round_forecasts(group, group.closing_price)
+    _score_previous_round_forecasts(group, group.field_maybe_none("closing_price"))
     dividends = _get_group_dividend_schedule(group)
     if len(dividends) < completed_day:
         raise RuntimeError(
@@ -670,8 +670,8 @@ def _capture_daybreak_state(group: Group, observed_last_transaction_price=None):
             "_capture_daybreak_state stored player daybreak values",
             round_number=completed_day,
             market_number=completed_market,
-            observed_last_transaction_price=group.observed_last_transaction_price,
-            closing_price=group.closing_price,
+            observed_last_transaction_price=group.field_maybe_none("observed_last_transaction_price"),
+            closing_price=group.field_maybe_none("closing_price"),
             player_id=player.id_in_subsession,
             trader_uuid=trader_id,
             current_cash=player.current_cash,
