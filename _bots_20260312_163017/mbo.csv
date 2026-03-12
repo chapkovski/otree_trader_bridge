@@ -1,0 +1,1 @@
+trading_session_uuid,is_simulated,event_seq,event_ts,record_kind,event_type,side,order_id,trader_uuid,price,size,size_delta,size_resting_after,status_after,match_id,contra_order_id,bid_order_id,ask_order_id,bid_trader_uuid,ask_trader_uuid,event_json,created_ts

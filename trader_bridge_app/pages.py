@@ -408,6 +408,10 @@ def _assign_player_endowments(group: Group):
         player.participant.vars["assigned_initial_shares"] = player.assigned_initial_shares
 
 
+def _is_bot_participant(participant):
+    return bool(getattr(participant, "_is_bot", False))
+
+
 def _build_initiate_payload(group: Group, players):
     cfg = group.session.config
     num_players = len(players)
@@ -447,6 +451,7 @@ def _build_initiate_payload(group: Group, players):
         for player in players
     ]
     return dict(
+        is_simulated=any(_is_bot_participant(player.participant) for player in players),
         num_human_traders=num_players,
         num_noise_traders=num_noise_traders,
         num_days=num_days,
@@ -908,7 +913,11 @@ class TradePage(Page):
 
     @staticmethod
     def is_displayed(player: Player):
-        return not _group_init_error(player.group) and bool(player.trader_uuid)
+        return (
+            not _group_init_error(player.group)
+            and bool(player.trader_uuid)
+            and not _is_bot_participant(player.participant)
+        )
 
     @staticmethod
     def vars_for_template(player: Player):

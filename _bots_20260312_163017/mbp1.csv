@@ -1,0 +1,1 @@
+trading_session_uuid,is_simulated,event_seq,event_ts,source_mbo_event_seq,source_order_id,source_event_type,best_bid_px,best_bid_sz,best_bid_ct,best_ask_px,best_ask_sz,best_ask_ct,spread,midpoint,created_ts

@@ -41,7 +41,8 @@ SESSION_CONFIGS = [
         app_sequence=["intro"],
     ),
     dict(
-        name="trader_bridge_demo",
+        name="main",
+        use_browser_bots=False,
         display_name="Trader Bridge Demo",
         num_demo_participants=12,
         players_per_group=PLAYERS_PER_GROUP,
@@ -53,7 +54,7 @@ SESSION_CONFIGS = [
         max_orders_per_minute=30,
         noise_trader_start_second=5,
         hybrid_noise_traders=1,
-        hybrid_noise_trader_probability=0.2,
+        hybrid_noise_trader_probability=1,
         treatments=["gh", "gh", "nh", "nh", "gm", "nm"],
         initial_midpoint=120,
         initial_spread=10,

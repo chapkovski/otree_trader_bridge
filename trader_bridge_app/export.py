@@ -140,6 +140,26 @@ def _market_number_by_session(players):
     return mapping
 
 
+def _session_is_simulated_by_uuid():
+    rows = _fetch_export_rows(
+        """
+        SELECT trading_session_uuid, payload_json
+        FROM trading_platform_sessions
+        ORDER BY id ASC
+        """,
+        export_name="session_is_simulated_lookup",
+        missing_table_hint="trading_platform_sessions unavailable",
+    )
+    mapping = {}
+    for row in rows:
+        session_uuid = str(row["trading_session_uuid"] or "")
+        if not session_uuid:
+            continue
+        payload = _parse_json_object(row["payload_json"])
+        mapping[session_uuid] = bool(payload.get("is_simulated", False))
+    return mapping
+
+
 def _trading_day_by_mbo_key(mbo_rows):
     mapping = {}
     for row in mbo_rows or []:
@@ -527,8 +547,10 @@ def _best_levels_from_active_orders(active_orders_by_id):
 
 def custom_export_mbo(players):
     market_by_session = _market_number_by_session(players)
+    simulated_by_session = _session_is_simulated_by_uuid()
     yield [
         "trading_session_uuid",
+        "is_simulated",
         "market_number",
         "trading_day",
         "event_seq",
@@ -574,6 +596,7 @@ def custom_export_mbo(players):
             trading_day = _extract_trading_day_from_json(row["event_json"])
             yield [
                 session_uuid,
+                simulated_by_session.get(session_uuid, False),
                 market_by_session.get(session_uuid, ""),
                 trading_day if trading_day is not None else "",
                 row["event_seq"],
@@ -699,6 +722,7 @@ def custom_export_mbo(players):
     for idx, event in enumerate(events, start=1):
         yield [
             event["trading_session_uuid"],
+            simulated_by_session.get(event["trading_session_uuid"], False),
             event["market_number"],
             event["trading_day"],
             idx,
@@ -728,8 +752,10 @@ def custom_export_mbo(players):
 
 def custom_export_mbp1(players):
     market_by_session = _market_number_by_session(players)
+    simulated_by_session = _session_is_simulated_by_uuid()
     yield [
         "trading_session_uuid",
+        "is_simulated",
         "market_number",
         "trading_day",
         "event_seq",
@@ -758,6 +784,7 @@ def custom_export_mbp1(players):
             trading_day = trading_day_by_key.get((session_uuid, source_seq), "")
             yield [
                 session_uuid,
+                simulated_by_session.get(session_uuid, False),
                 market_by_session.get(session_uuid, ""),
                 trading_day,
                 row["event_seq"],
@@ -826,6 +853,7 @@ def custom_export_mbp1(players):
         event_seq += 1
         yield [
             session_uuid,
+            simulated_by_session.get(session_uuid, False),
             market_by_session.get(session_uuid, ""),
             "",
             event_seq,
