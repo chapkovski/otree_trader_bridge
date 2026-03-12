@@ -128,17 +128,18 @@ def _write_note(path: Path, text: str):
     path.write_text(text, encoding="utf-8")
 
 
+def _row_count(csv_rows):
+    if not csv_rows:
+        return 0
+    return max(0, len(csv_rows) - 1)
+
+
 def main():
     sessions = _simulated_sessions()
     output_dir = _timestamped_output_dir()
-    _write_csv(output_dir / "sessions.csv", _sessions_csv_rows(sessions))
+    sessions_rows = _sessions_csv_rows(sessions)
+    _write_csv(output_dir / "sessions.csv", sessions_rows)
     session_ids = _simulated_session_ids(sessions)
-    if not sessions:
-        _write_note(
-            output_dir / "README.txt",
-            "No simulated trading sessions were found in the configured persistence database. "
-            "This usually means trading-platform SQL persistence is not enabled for the current local DB target.\n",
-        )
 
     mbo_rows = _export_table(
         """
@@ -168,10 +169,7 @@ def main():
         """,
         session_ids=session_ids,
     )
-    _write_csv(
-        output_dir / "mbo.csv",
-        mbo_rows
-        or [[
+    mbo_output_rows = mbo_rows or [[
             "trading_session_uuid",
             "is_simulated",
             "event_seq",
@@ -194,8 +192,8 @@ def main():
             "ask_trader_uuid",
             "event_json",
             "created_ts",
-        ]],
-    )
+        ]]
+    _write_csv(output_dir / "mbo.csv", mbo_output_rows)
 
     mbp1_rows = _export_table(
         """
@@ -219,10 +217,7 @@ def main():
         """,
         session_ids=session_ids,
     )
-    _write_csv(
-        output_dir / "mbp1.csv",
-        mbp1_rows
-        or [[
+    mbp1_output_rows = mbp1_rows or [[
             "trading_session_uuid",
             "is_simulated",
             "event_seq",
@@ -239,8 +234,21 @@ def main():
             "spread",
             "midpoint",
             "created_ts",
-        ]],
-    )
+        ]]
+    _write_csv(output_dir / "mbp1.csv", mbp1_output_rows)
+
+    summary_lines = [
+        f"Configured persistence target: {_resolve_export_backend_and_target()[1]}",
+        f"Simulated sessions exported: {_row_count(sessions_rows)}",
+        f"MBO rows exported: {_row_count(mbo_output_rows)}",
+        f"MBP1 rows exported: {_row_count(mbp1_output_rows)}",
+    ]
+    if not sessions:
+        summary_lines.append(
+            "No simulated trading sessions were found in the configured persistence database. "
+            "This usually means the export ran before bot data was written or the current DB target is not the one receiving trading-platform persistence."
+        )
+    _write_note(output_dir / "README.txt", "\n".join(summary_lines) + "\n")
 
     print(output_dir)
 
