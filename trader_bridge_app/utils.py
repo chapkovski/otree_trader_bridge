@@ -2,6 +2,7 @@ import json
 import socket
 import traceback
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib import error, parse, request
 
 
@@ -12,6 +13,35 @@ def _log(message, prefix="trader_bridge", **context):
         print(f"[{prefix}][{ts}] {message} | {details}", flush=True)
     else:
         print(f"[{prefix}][{ts}] {message}", flush=True)
+
+
+_DAY_TIMING_LOG_PATH = Path(__file__).resolve().parent.parent / "logs" / "day_timing.log"
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            return str(value)
+    return str(value)
+
+
+def _log_day_timing(event, **context):
+    payload = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "event": str(event),
+        **{str(k): _json_safe(v) for k, v in context.items()},
+    }
+    _DAY_TIMING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _DAY_TIMING_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
 def _as_int(value, fallback):

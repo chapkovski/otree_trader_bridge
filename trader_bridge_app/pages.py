@@ -3,6 +3,7 @@ import json
 import os
 import random
 import traceback
+from datetime import datetime, timezone
 
 from otree.api import Currency as cu
 from otree.api import WaitPage
@@ -15,6 +16,7 @@ from .utils import (
     _as_float,
     _as_int,
     _get_json,
+    _log_day_timing,
     _log,
     _normalize_http_base,
     _post_json,
@@ -320,6 +322,164 @@ def _is_first_round_of_market(round_number):
 
 def _is_last_round_of_market(round_number):
     return _day_in_market(round_number) == C.DAYS_PER_MARKET
+
+
+def _utc_now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_iso_utc(raw):
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _trade_page_timeout_seconds(player: Player):
+    duration_minutes = _resolve_day_duration_minutes(player.session.config, C.DEFAULT_TRADING_DAY_DURATION)
+    return max(15, int(duration_minutes * 60))
+
+
+def _player_trade_timing_key(player: Player):
+    participant_code = str(getattr(player.participant, "code", "") or "participant")
+    return f"trade_page_timing:{participant_code}:{player.round_number}"
+
+
+def _group_trade_timing_key(group: Group, round_number=None):
+    round_number = int(round_number or group.subsession.round_number or 1)
+    session_code = str(getattr(group.session, "code", "") or "session")
+    group_id = int(getattr(group, "id_in_subsession", 0) or 0)
+    return f"group_day_timing:{session_code}:g{group_id}:r{round_number}"
+
+
+def _safe_backend_timing(group: Group):
+    if not group.trading_session_uuid or not group.trading_api_base:
+        return {}
+    try:
+        info = _fetch_trading_session_info(group)
+    except Exception as exc:
+        return {"fetch_error": str(exc)}
+    return info.get("timing") or {}
+
+
+def _record_group_day_start(group: Group, source: str, backend_timing=None):
+    round_number = int(group.subsession.round_number or 1)
+    key = _group_trade_timing_key(group, round_number)
+    expected_timeout_seconds = max(15, int(group.trading_day_duration_minutes or C.DEFAULT_TRADING_DAY_DURATION) * 60)
+    payload = {
+        "start_ts": _utc_now_iso(),
+        "expected_timeout_seconds": expected_timeout_seconds,
+        "round_number": round_number,
+        "market_number": _market_number_for_round(round_number),
+        "day_in_market": _day_in_market(round_number),
+        "trading_session_uuid": str(group.trading_session_uuid or ""),
+        "source": str(source),
+    }
+    group.session.vars[key] = payload
+    _log_day_timing(
+        "group_day_start",
+        session_code=getattr(group.session, "code", ""),
+        group_id=getattr(group, "id_in_subsession", None),
+        round_number=round_number,
+        market_number=payload["market_number"],
+        day_in_market=payload["day_in_market"],
+        trading_session_uuid=payload["trading_session_uuid"],
+        expected_timeout_seconds=expected_timeout_seconds,
+        source=source,
+        backend_timing=backend_timing or {},
+    )
+
+
+def _record_group_day_end(group: Group, source: str, result=None, backend_timing=None):
+    round_number = int(group.subsession.round_number or 1)
+    key = _group_trade_timing_key(group, round_number)
+    state = dict(group.session.vars.get(key) or {})
+    end_ts = _utc_now_iso()
+    start_dt = _parse_iso_utc(state.get("start_ts"))
+    end_dt = _parse_iso_utc(end_ts)
+    actual_duration_seconds = None
+    if start_dt and end_dt:
+        actual_duration_seconds = round((end_dt - start_dt).total_seconds(), 3)
+    _log_day_timing(
+        "group_day_end",
+        session_code=getattr(group.session, "code", ""),
+        group_id=getattr(group, "id_in_subsession", None),
+        round_number=round_number,
+        market_number=_market_number_for_round(round_number),
+        day_in_market=_day_in_market(round_number),
+        trading_session_uuid=str(group.trading_session_uuid or ""),
+        source=source,
+        start_ts=state.get("start_ts"),
+        end_ts=end_ts,
+        expected_timeout_seconds=state.get("expected_timeout_seconds"),
+        actual_duration_seconds=actual_duration_seconds,
+        backend_timing=backend_timing or {},
+        result=result or {},
+    )
+    group.session.vars.pop(key, None)
+
+
+def _record_player_trade_page_start(player: Player, expected_timeout_seconds: int):
+    key = _player_trade_timing_key(player)
+    state = dict(player.participant.vars.get(key) or {})
+    if state.get("round_number") == player.round_number and not state.get("completed"):
+        return
+    backend_timing = _safe_backend_timing(player.group)
+    payload = {
+        "start_ts": _utc_now_iso(),
+        "round_number": int(player.round_number or 1),
+        "market_number": _market_number_for_round(player.round_number),
+        "day_in_market": _day_in_market(player.round_number),
+        "expected_timeout_seconds": int(expected_timeout_seconds),
+        "completed": False,
+    }
+    player.participant.vars[key] = payload
+    _log_day_timing(
+        "player_trade_page_start",
+        participant_code=getattr(player.participant, "code", ""),
+        player_id_in_group=getattr(player, "id_in_group", None),
+        round_number=payload["round_number"],
+        market_number=payload["market_number"],
+        day_in_market=payload["day_in_market"],
+        trading_session_uuid=str(player.group.trading_session_uuid or ""),
+        expected_timeout_seconds=payload["expected_timeout_seconds"],
+        backend_timing=backend_timing,
+    )
+
+
+def _record_player_trade_page_end(player: Player, timeout_happened):
+    key = _player_trade_timing_key(player)
+    state = dict(player.participant.vars.get(key) or {})
+    end_ts = _utc_now_iso()
+    start_dt = _parse_iso_utc(state.get("start_ts"))
+    end_dt = _parse_iso_utc(end_ts)
+    actual_duration_seconds = None
+    if start_dt and end_dt:
+        actual_duration_seconds = round((end_dt - start_dt).total_seconds(), 3)
+    backend_timing = _safe_backend_timing(player.group)
+    _log_day_timing(
+        "player_trade_page_end",
+        participant_code=getattr(player.participant, "code", ""),
+        player_id_in_group=getattr(player, "id_in_group", None),
+        round_number=int(player.round_number or 1),
+        market_number=_market_number_for_round(player.round_number),
+        day_in_market=_day_in_market(player.round_number),
+        trading_session_uuid=str(player.group.trading_session_uuid or ""),
+        start_ts=state.get("start_ts"),
+        end_ts=end_ts,
+        expected_timeout_seconds=state.get("expected_timeout_seconds"),
+        actual_duration_seconds=actual_duration_seconds,
+        timeout_happened=bool(timeout_happened),
+        backend_timing=backend_timing,
+    )
+    state["completed"] = True
+    state["end_ts"] = end_ts
+    state["actual_duration_seconds"] = actual_duration_seconds
+    state["timeout_happened"] = bool(timeout_happened)
+    player.participant.vars[key] = state
 
 
 def _assign_payable_market(player: Player):
@@ -780,6 +940,11 @@ def after_all_players_arrive(group: Group):
         group.trading_session_uuid = str(trading_session_uuid)
         group.trading_init_error = ""
         _log("after_all_players_arrive storing success state", trading_session_uuid=group.trading_session_uuid)
+        _record_group_day_start(
+            group,
+            source="sync_trading_session",
+            backend_timing=data.get("timing") or {},
+        )
 
         for player, trader_uuid in zip(players, human_traders):
             trader_id = str(trader_uuid)
@@ -833,6 +998,11 @@ def resume_trading_after_wait(group: Group):
         return
     try:
         result = _resume_trading_session(group)
+        _record_group_day_start(
+            group,
+            source="resume_wait_page",
+            backend_timing=_safe_backend_timing(group),
+        )
         _log(
             "resume_trading_after_wait succeeded",
             round_number=group.subsession.round_number,
@@ -864,6 +1034,12 @@ def pause_trading_after_wait(group: Group):
             group,
             observed_last_transaction_price=result.get("last_transaction_price"),
         )
+        _record_group_day_end(
+            group,
+            source="pause_wait_page",
+            result=result,
+            backend_timing=_safe_backend_timing(group),
+        )
         _log(
             "pause_trading_after_wait succeeded",
             round_number=group.subsession.round_number,
@@ -894,6 +1070,12 @@ def close_trading_after_wait(group: Group):
         _capture_daybreak_state(
             group,
             observed_last_transaction_price=result.get("last_transaction_price"),
+        )
+        _record_group_day_end(
+            group,
+            source="finalize_wait_page",
+            result=result,
+            backend_timing=_safe_backend_timing(group),
         )
         _log(
             "close_trading_after_wait succeeded",
@@ -979,6 +1161,7 @@ class TradePage(Page):
 
     @staticmethod
     def vars_for_template(player: Player):
+        _record_player_trade_page_start(player, _trade_page_timeout_seconds(player))
         ws_url = f"{player.group.trading_ws_base}/trader/{player.trader_uuid}"
         data = dict(
             ws_url=ws_url,
@@ -1020,9 +1203,11 @@ class TradePage(Page):
 
     @staticmethod
     def get_timeout_seconds(player: Player):
-        duration_minutes = _resolve_day_duration_minutes(player.session.config, C.DEFAULT_TRADING_DAY_DURATION)
-        # Keep day timeout equal to configured day duration for every trading day.
-        return max(15, int(duration_minutes * 60))
+        return _trade_page_timeout_seconds(player)
+
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        _record_player_trade_page_end(player, timeout_happened)
 
 
 class DayBreak(Page):

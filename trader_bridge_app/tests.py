@@ -5,13 +5,13 @@ import unittest
 from csv import writer as csv_writer
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from otree.api import Bot, Submission
 
 from . import *
 from . import export
-from .pages import _is_last_round_of_market, _market_number_for_round, _should_elicit_forecast
+from .pages import TradePage, _is_last_round_of_market, _market_number_for_round, _should_elicit_forecast
 
 
 BOT_EXPORT_ROOT = (
@@ -180,6 +180,12 @@ class PlayerBot(Bot):
 
 
 class ExportTests(unittest.TestCase):
+    def test_trade_page_timeout_matches_configured_day_duration(self):
+        player = MagicMock()
+        player.session.config = {"trading_day_duration": 1}
+
+        self.assertEqual(TradePage.get_timeout_seconds(player), 60)
+
     def test_custom_export_mbo_includes_is_simulated(self):
         session_uuid = "session-sim-1"
         mbo_rows = [
