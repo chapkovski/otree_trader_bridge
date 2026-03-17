@@ -1082,6 +1082,7 @@ class TradePage(Page):
 class DayBreak(Page):
     form_model = "player"
     form_fields = ["forecast_price_next_day", "forecast_confidence_next_day", "forecast_survey_json"]
+    timer_text = "This page will continue automatically in"
 
     @staticmethod
     def is_displayed(player: Player):
@@ -1089,6 +1090,10 @@ class DayBreak(Page):
             not _group_init_error(player.group)
             and bool(player.trader_uuid)
         )
+
+    @staticmethod
+    def get_timeout_seconds(player: Player):
+        return 10
 
     @staticmethod
     def get_form_fields(player: Player):
@@ -1211,6 +1216,6 @@ page_sequence = [
     InitFailed,
     TradePage,
     PauseTradingSession,
-    # DayBreak,
+    DayBreak,
     # MarketTransition,
 ]

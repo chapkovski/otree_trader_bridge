@@ -29,18 +29,22 @@ def _load_local_env():
 
 _load_local_env()
 
-_BASE_PLAYERS_PER_GROUP = max(1, int(environ.get("PLAYERS_PER_GROUP", 2)))
+_BASE_PLAYERS_PER_GROUP = max(2, int(environ.get("PLAYERS_PER_GROUP", 2)))
 _BASE_TREATMENTS = ["gh", "gh", "nh", "nh", "gm", "nm"]
+_ALL_HYBRID_TREATMENTS = ["gm", "gm", "nm", "nm", "gm", "nm"]
 
 # TEMP TEST MODE: force singleton groups and guarantee NT presence in every market.
 # Remove this block after timing/debugging is finished.
-TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE = True
+TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE = False
+# TEMP TEST MODE: keep all markets hybrid while preserving normal group sizes.
+# Remove this block after timing/debugging is finished.
+TEMP_ALL_HYBRID_MARKETS = True
 
 PLAYERS_PER_GROUP = None if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else _BASE_PLAYERS_PER_GROUP
 SESSION_TREATMENTS = (
-    ["gm", "gm", "nm", "nm", "gm", "nm"]
+    _ALL_HYBRID_TREATMENTS
     if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE
-    else list(_BASE_TREATMENTS)
+    else (_ALL_HYBRID_TREATMENTS if TEMP_ALL_HYBRID_MARKETS else list(_BASE_TREATMENTS))
 )
 HYBRID_NOISE_TRADER_PROBABILITY = 1 if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else 0.2
 TEMP_SINGLETON_GROUPS = bool(TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE)
