@@ -351,7 +351,7 @@ class SurveyJSPage(Page):
 
 class C(BaseConstants):
     NAME_IN_URL = 'intro'
-    PLAYERS_PER_GROUP = max(2, int(os.getenv("PLAYERS_PER_GROUP", 2)))
+    PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
     TREATMENTS = ("gh", "nh", "gm", "nm")
     WEIGHTED_TREATMENT_SEQUENCE = ("gh", "gh", "nh", "nh", "gm", "nm")
@@ -373,7 +373,7 @@ class C(BaseConstants):
     DEFAULT_FORECAST_BONUS_AMOUNT = 1
     DEFAULT_FORECAST_BONUS_THRESHOLD_PCT = 1
     DEFAULT_HYBRID_NOISE_TRADERS = 1
-    DEFAULT_GROUP_SIZE = PLAYERS_PER_GROUP
+    DEFAULT_GROUP_SIZE = max(1, int(os.getenv("PLAYERS_PER_GROUP", 2)))
     DEFAULT_DIVIDEND_VALUES = (0, 4, 8, 20)
     DEFAULT_HUMAN_TRADER_ENDOWMENTS = (
         (2600.0, 20),
@@ -416,6 +416,9 @@ def _set_group_treatment(group: Group, treatment: str):
 def creating_session(subsession):
     if subsession.round_number != 1:
         return
+    if bool(subsession.session.config.get("temporary_singleton_groups", False)):
+        players = sorted(subsession.get_players(), key=lambda p: p.id_in_subsession)
+        subsession.set_group_matrix([[player] for player in players])
     treatment_cycle = itertools.cycle(_parse_treatments(subsession.session.config.get("treatments")))
     for group in subsession.get_groups():
         _set_group_treatment(group, next(treatment_cycle))

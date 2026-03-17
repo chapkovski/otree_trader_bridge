@@ -16,6 +16,9 @@ def _log(message, prefix="trader_bridge", **context):
 
 
 _DAY_TIMING_LOG_PATH = Path(__file__).resolve().parent.parent / "logs" / "day_timing.log"
+_DAY_TIMING_END_OF_DAY_LOG_PATH = (
+    Path(__file__).resolve().parent.parent / "logs" / "day_timing_end_of_day.log"
+)
 
 
 def _json_safe(value):
@@ -43,6 +46,19 @@ def _log_day_timing(event, **context):
     print(f"[day_timing] {serialized}", flush=True)
     _DAY_TIMING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _DAY_TIMING_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(serialized + "\n")
+
+
+def _log_day_timing_end_of_day(event, **context):
+    payload = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "event": str(event),
+        **{str(k): _json_safe(v) for k, v in context.items()},
+    }
+    serialized = json.dumps(payload, sort_keys=True)
+    print(f"[day_timing_end_of_day] {serialized}", flush=True)
+    _DAY_TIMING_END_OF_DAY_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _DAY_TIMING_END_OF_DAY_LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(serialized + "\n")
 
 

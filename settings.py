@@ -29,7 +29,24 @@ def _load_local_env():
 
 _load_local_env()
 
-PLAYERS_PER_GROUP = max(2, int(environ.get("PLAYERS_PER_GROUP", 2)))
+_BASE_PLAYERS_PER_GROUP = max(1, int(environ.get("PLAYERS_PER_GROUP", 2)))
+_BASE_TREATMENTS = ["gh", "gh", "nh", "nh", "gm", "nm"]
+
+# TEMP TEST MODE: force singleton groups and guarantee NT presence in every market.
+# Remove this block after timing/debugging is finished.
+TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE = True
+
+PLAYERS_PER_GROUP = None if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else _BASE_PLAYERS_PER_GROUP
+SESSION_TREATMENTS = (
+    ["gm", "gm", "nm", "nm", "gm", "nm"]
+    if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE
+    else list(_BASE_TREATMENTS)
+)
+HYBRID_NOISE_TRADER_PROBABILITY = 1 if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else 0.2
+TEMP_SINGLETON_GROUPS = bool(TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE)
+
+# App defaults still read PLAYERS_PER_GROUP from env for display/default logic.
+environ["PLAYERS_PER_GROUP"] = "1" if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else str(_BASE_PLAYERS_PER_GROUP)
 
 ROOMS = [
     dict(
@@ -44,6 +61,7 @@ SESSION_CONFIGS = [
         display_name="Intro Only",
         num_demo_participants=12,
         players_per_group=PLAYERS_PER_GROUP,
+        temporary_singleton_groups=TEMP_SINGLETON_GROUPS,
         app_sequence=["intro"],
     ),
     dict(
@@ -52,6 +70,7 @@ SESSION_CONFIGS = [
         display_name="Trader Bridge Demo",
         num_demo_participants=12,
         players_per_group=PLAYERS_PER_GROUP,
+        temporary_singleton_groups=TEMP_SINGLETON_GROUPS,
         app_sequence=["trader_bridge_app"],
         trading_api_base=environ.get("TRADING_API_BASE", "http://localhost:8001"),
         trading_api_timeout_seconds=20,
@@ -61,7 +80,7 @@ SESSION_CONFIGS = [
         noise_trader_start_second=5,
         hybrid_noise_traders=1,
         hybrid_noise_trader_probability=1,
-        treatments=["gh", "gh", "nh", "nh", "gm", "nm"],
+        treatments=SESSION_TREATMENTS,
         initial_midpoint=120,
         initial_spread=10,
         initial_cash=2600,
@@ -74,6 +93,7 @@ SESSION_CONFIGS = [
         display_name="Post-Experiment Only",
         num_demo_participants=2,
         players_per_group=PLAYERS_PER_GROUP,
+        temporary_singleton_groups=TEMP_SINGLETON_GROUPS,
         app_sequence=["post_exp"],
     ),
     dict(
@@ -81,6 +101,7 @@ SESSION_CONFIGS = [
         display_name="Full Study (Intro + Market + Post)",
         num_demo_participants=12,
         players_per_group=PLAYERS_PER_GROUP,
+        temporary_singleton_groups=TEMP_SINGLETON_GROUPS,
         app_sequence=["intro", "trader_bridge_app", "post_exp"],
         trading_api_base=environ.get("TRADING_API_BASE", "http://localhost:8001"),
         trading_api_timeout_seconds=20,
@@ -89,8 +110,8 @@ SESSION_CONFIGS = [
         max_orders_per_minute=30,
         noise_trader_start_second=5,
         hybrid_noise_traders=1,
-        hybrid_noise_trader_probability=0.2,
-        treatments=["gh", "gh", "nh", "nh", "gm", "nm"],
+        hybrid_noise_trader_probability=HYBRID_NOISE_TRADER_PROBABILITY,
+        treatments=SESSION_TREATMENTS,
         initial_midpoint=120,
         initial_spread=10,
         initial_cash=2600,
