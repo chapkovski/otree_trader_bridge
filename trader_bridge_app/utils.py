@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import traceback
 from datetime import datetime, timezone
@@ -6,7 +7,18 @@ from pathlib import Path
 from urllib import error, parse, request
 
 
+def _bridge_verbose_logs_enabled():
+    return str(os.getenv("OTREE_TRADER_BRIDGE_VERBOSE_LOGS", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _log(message, prefix="trader_bridge", **context):
+    if not _bridge_verbose_logs_enabled():
+        return
     ts = datetime.now(timezone.utc).isoformat()
     if context:
         details = ", ".join(f"{k}={repr(v)}" for k, v in sorted(context.items()))
@@ -15,7 +27,6 @@ def _log(message, prefix="trader_bridge", **context):
         print(f"[{prefix}][{ts}] {message}", flush=True)
 
 
-_DAY_TIMING_LOG_PATH = Path(__file__).resolve().parent.parent / "logs" / "day_timing.log"
 _DAY_TIMING_END_OF_DAY_LOG_PATH = (
     Path(__file__).resolve().parent.parent / "logs" / "day_timing_end_of_day.log"
 )
@@ -34,19 +45,6 @@ def _json_safe(value):
         except Exception:
             return str(value)
     return str(value)
-
-
-def _log_day_timing(event, **context):
-    payload = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "event": str(event),
-        **{str(k): _json_safe(v) for k, v in context.items()},
-    }
-    serialized = json.dumps(payload, sort_keys=True)
-    print(f"[day_timing] {serialized}", flush=True)
-    _DAY_TIMING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with _DAY_TIMING_LOG_PATH.open("a", encoding="utf-8") as f:
-        f.write(serialized + "\n")
 
 
 def _log_day_timing_end_of_day(event, **context):

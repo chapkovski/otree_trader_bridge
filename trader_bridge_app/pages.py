@@ -15,7 +15,6 @@ from .utils import (
     _as_float,
     _as_int,
     _get_json,
-    _log_day_timing,
     _log_day_timing_end_of_day,
     _log,
     _normalize_http_base,
@@ -367,6 +366,13 @@ def _trade_page_log_context(player: Player):
     )
 
 
+def _players_in_group(player: Player):
+    try:
+        return len(player.group.get_players())
+    except Exception:
+        return _as_int(player.session.config.get("players_per_group"), 0)
+
+
 def _trade_page_debug_storage_key(player: Player):
     participant_code = str(getattr(player.participant, "code", "") or "participant")
     return f"trade_page_debug:{participant_code}:round:{int(player.round_number or 1)}"
@@ -393,19 +399,21 @@ def _optional_int(value):
 def _end_of_day_log_payload(player: Player, timeout_happened):
     debug_payload = player.participant.vars.get(_trade_page_debug_storage_key(player), {}) or {}
     return dict(
+        session_code=getattr(player.session, "code", ""),
+        participant_code=getattr(player.participant, "code", ""),
+        player_id_in_group=getattr(player, "id_in_group", None),
+        players_in_group=_players_in_group(player),
+        round_number=int(player.round_number or 1),
+        market_number=_market_number_for_round(player.round_number),
+        day_in_market=_day_in_market(player.round_number),
+        total_days=C.DAYS_PER_MARKET,
+        trading_session_uuid=str(player.group.trading_session_uuid or ""),
         timeout_happened=bool(timeout_happened),
-        actual_duration_ms=_optional_float(debug_payload.get("actual_duration_ms")),
-        actual_duration_seconds=_optional_float(debug_payload.get("actual_duration_seconds")),
-        client_start_ts=debug_payload.get("client_start_ts"),
-        client_end_ts=debug_payload.get("client_end_ts"),
+        actual_day_duration_seconds=_optional_float(debug_payload.get("actual_duration_seconds")),
         trigger_reason=debug_payload.get("trigger_reason"),
+        expected_day_duration_seconds=_trade_page_timeout_seconds(player),
+        is_final_day=bool(_is_last_round_of_market(player.round_number)),
         day_over_flag=_as_bool(debug_payload.get("day_over_flag"), False),
-        otree_remaining_timeout_seconds=_optional_int(debug_payload.get("otree_remaining_timeout_seconds")),
-        backend_end_time=debug_payload.get("backend_end_time"),
-        backend_paused_total_seconds=_optional_float(debug_payload.get("backend_paused_total_seconds")),
-        backend_remaining_ms_snapshot=_optional_float(debug_payload.get("backend_remaining_ms_snapshot")),
-        debug_payload=debug_payload,
-        **_trade_page_log_context(player),
     )
 
 
@@ -1008,10 +1016,6 @@ class TradePage(Page):
 
     @staticmethod
     def vars_for_template(player: Player):
-        _log_day_timing(
-            "trade_page_rendered",
-            **_trade_page_log_context(player),
-        )
         ws_url = f"{player.group.trading_ws_base}/trader/{player.trader_uuid}"
         data = dict(
             ws_url=ws_url,
@@ -1066,16 +1070,10 @@ class TradePage(Page):
             return
         debug_payload = _parse_debug_json(json.dumps(payload.get("payload") or {}))
         player.participant.vars[_trade_page_debug_storage_key(player)] = debug_payload
-        _log_day_timing(
-            "trade_page_live_debug",
-            debug_payload=debug_payload,
-            **_trade_page_log_context(player),
-        )
 
     @staticmethod
     def before_next_page(player: Player, timeout_happened):
         payload = _end_of_day_log_payload(player, timeout_happened)
-        _log_day_timing("trade_page_submitted", **payload)
         _log_day_timing_end_of_day("trade_day_completed", **payload)
 
 
