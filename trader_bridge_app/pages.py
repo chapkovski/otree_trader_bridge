@@ -1070,6 +1070,7 @@ class TradePage(Page):
             marketNumber=market_number,
             totalMarkets=C.NUM_MARKETS,
             roundNumber=day_in_market,
+            tradingDay=day_in_market,
             totalRounds=C.DAYS_PER_MARKET,
             dayDurationMinutes=day_duration_minutes,
             tradePageServerContext=_trade_page_log_context(player),
