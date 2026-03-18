@@ -373,6 +373,25 @@ def _players_in_group(player: Player):
         return _as_int(player.session.config.get("players_per_group"), 0)
 
 
+def _initial_trader_state(player: Player):
+    if not getattr(player, "trader_uuid", None):
+        return {}
+    cfg = player.session.config
+    timeout_seconds = _as_int(
+        cfg.get("trading_api_timeout_seconds", C.DEFAULT_API_TIMEOUT_SECONDS),
+        C.DEFAULT_API_TIMEOUT_SECONDS,
+    )
+    try:
+        response = _get_json(
+            f"{player.group.trading_api_base}/trader_info/{player.trader_uuid}",
+            timeout_seconds,
+        )
+        data = response.get("data") or {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
 def _trade_page_debug_storage_key(player: Player):
     participant_code = str(getattr(player.participant, "code", "") or "participant")
     return f"trade_page_debug:{participant_code}:round:{int(player.round_number or 1)}"
@@ -1054,6 +1073,7 @@ class TradePage(Page):
             totalRounds=C.DAYS_PER_MARKET,
             dayDurationMinutes=day_duration_minutes,
             tradePageServerContext=_trade_page_log_context(player),
+            initialTraderState=_initial_trader_state(player),
         )
 
     @staticmethod
