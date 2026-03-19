@@ -1014,7 +1014,6 @@ class PauseTradingSession(WaitPage):
         return (
             not _is_last_round_of_market(player.round_number)
             and not _group_init_error(player.group)
-            and bool(player.trader_uuid)
         )
 
 
@@ -1027,7 +1026,6 @@ class ResumeTradingSession(WaitPage):
     def is_displayed(player: Player):
         return (
             not _group_init_error(player.group)
-            and bool(player.trader_uuid)
         )
 
 
@@ -1053,7 +1051,6 @@ class TradePage(Page):
     def is_displayed(player: Player):
         return (
             not _group_init_error(player.group)
-            and bool(player.trader_uuid)
             and not _is_bot_participant(player.participant)
         )
 
@@ -1131,7 +1128,6 @@ class DayBreak(Page):
     def is_displayed(player: Player):
         return (
             not _group_init_error(player.group)
-            and bool(player.trader_uuid)
         )
 
     @staticmethod
