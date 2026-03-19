@@ -38,7 +38,7 @@ _ALL_HYBRID_TREATMENTS = ["gm", "gm", "nm", "nm", "gm", "nm"]
 TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE = False
 # TEMP TEST MODE: keep all markets hybrid while preserving normal group sizes.
 # Remove this block after timing/debugging is finished.
-TEMP_ALL_HYBRID_MARKETS = True
+TEMP_ALL_HYBRID_MARKETS = False
 
 PLAYERS_PER_GROUP = None if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else _BASE_PLAYERS_PER_GROUP
 SESSION_TREATMENTS = (
@@ -83,7 +83,7 @@ SESSION_CONFIGS = [
         max_orders_per_minute=30,
         noise_trader_start_second=5,
         hybrid_noise_traders=1,
-        hybrid_noise_trader_probability=1,
+        hybrid_noise_trader_probability=HYBRID_NOISE_TRADER_PROBABILITY,
         treatments=SESSION_TREATMENTS,
         initial_midpoint=120,
         initial_spread=10,
