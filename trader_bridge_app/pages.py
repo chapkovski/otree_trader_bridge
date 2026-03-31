@@ -1184,7 +1184,7 @@ class DayBreak(Page):
 
     @staticmethod
     def get_timeout_seconds(player: Player):
-        return 10
+        return 20
 
     @staticmethod
     def get_form_fields(player: Player):
