@@ -7,7 +7,7 @@ achievement_badges:
     image_asset: bronze.png
     locked_image_asset: bronze_locked.png
   - id: silver
-    trades: 15
+    trades: 20
     label: Silver
     message: You belong on the trading floor!
     gif_asset: silver.gif
