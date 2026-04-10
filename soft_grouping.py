@@ -34,6 +34,25 @@ def preferred_players_per_group(session_config, default):
     )
 
 
+def small_remainder_force_nt_below_size(session_config, default=6):
+    cfg = session_config or {}
+    return max(0, _as_int(cfg.get("small_remainder_force_nt_below_size", default), default))
+
+
+def should_force_nt_for_remainder_group(session_config, realized_group_size, preferred_size):
+    cfg = session_config or {}
+    if not soft_group_matching_enabled(cfg):
+        return False
+    if _as_bool(cfg.get("temporary_singleton_groups", False), False):
+        return False
+    threshold = small_remainder_force_nt_below_size(cfg, 6)
+    if threshold <= 0:
+        return False
+    realized = max(1, _as_int(realized_group_size, 1))
+    preferred = max(1, _as_int(preferred_size, 1))
+    return realized < preferred and realized < threshold
+
+
 def build_sequential_group_matrix(players, target_group_size):
     ordered_players = sorted(
         list(players or []),

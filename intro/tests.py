@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 from otree.api import Bot, Submission
 from . import *
-from soft_grouping import build_soft_group_matrix, group_matrix_from_participant_match_id
+from soft_grouping import (
+    build_soft_group_matrix,
+    group_matrix_from_participant_match_id,
+    should_force_nt_for_remainder_group,
+)
 
 
 class PlayerBot(Bot):
@@ -87,3 +91,19 @@ class StaticGroupingTests(unittest.TestCase):
         ]
         matrix = group_matrix_from_participant_match_id(players)
         assert [len(group) for group in matrix] == [2, 3]
+
+    def test_small_remainder_can_force_noise_trader(self):
+        cfg = {
+            "soft_group_matching_enabled": True,
+            "small_remainder_force_nt_below_size": 6,
+        }
+        assert should_force_nt_for_remainder_group(cfg, realized_group_size=3, preferred_size=6) is True
+        assert should_force_nt_for_remainder_group(cfg, realized_group_size=6, preferred_size=6) is False
+
+    def test_small_remainder_force_noise_trader_threshold_is_adjustable(self):
+        cfg = {
+            "soft_group_matching_enabled": True,
+            "small_remainder_force_nt_below_size": 3,
+        }
+        assert should_force_nt_for_remainder_group(cfg, realized_group_size=2, preferred_size=6) is True
+        assert should_force_nt_for_remainder_group(cfg, realized_group_size=3, preferred_size=6) is False

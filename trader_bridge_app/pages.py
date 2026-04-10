@@ -17,6 +17,7 @@ from soft_grouping import (
     preferred_players_per_group,
     realized_group_size_for_player,
     session_planned_participant_count,
+    should_force_nt_for_remainder_group,
     soft_group_matching_enabled,
 )
 
@@ -295,10 +296,10 @@ def creating_session(subsession: Subsession):
         if players_in_group:
             intro_treatment = str(players_in_group[0].participant.vars.get("treatment", "") or "").strip().lower()
         if intro_treatment in C.TREATMENTS:
-            _set_group_treatment(group, intro_treatment)
+            _assign_group_treatment(group, intro_treatment)
         else:
             treatment = configured_treatments[idx % len(configured_treatments)]
-            _set_group_treatment(group, treatment)
+            _assign_group_treatment(group, treatment)
         _assign_noise_trader_presence(group)
         for player in players_in_group:
             player.participant.vars["treatment"] = group.treatment
@@ -357,7 +358,36 @@ def _set_group_treatment(group: Group, treatment: str):
     group.group_composition = C.TREATMENT_GROUP_COMPOSITION[treatment_value]
 
 
+def _hybrid_equivalent_treatment(treatment: str):
+    treatment_value = str(treatment or "").strip().lower()
+    return {
+        "gh": "gm",
+        "nh": "nm",
+        "gm": "gm",
+        "nm": "nm",
+    }.get(treatment_value, "gm")
+
+
+def _should_force_nt_for_group(group: Group):
+    preferred_size = preferred_players_per_group(group.session.config, C.DEFAULT_GROUP_SIZE)
+    return should_force_nt_for_remainder_group(
+        group.session.config,
+        getattr(group, "realized_group_size", 0),
+        preferred_size,
+    )
+
+
+def _assign_group_treatment(group: Group, treatment: str):
+    _set_group_treatment(group, treatment)
+    if _should_force_nt_for_group(group):
+        _set_group_treatment(group, _hybrid_equivalent_treatment(group.treatment))
+
+
 def _assign_noise_trader_presence(group: Group):
+    if _should_force_nt_for_group(group):
+        group.noise_trader_draw = 0.0
+        group.noise_trader_present = True
+        return
     if str(group.group_composition or "").strip().lower() != "hybrid":
         group.noise_trader_draw = 0.0
         group.noise_trader_present = False
@@ -619,11 +649,12 @@ def _build_initiate_payload(group: Group, players):
         cfg.get("hybrid_noise_traders", C.DEFAULT_HYBRID_NOISE_TRADERS),
         C.DEFAULT_HYBRID_NOISE_TRADERS,
     )
-    num_noise_traders = (
-        max(0, hybrid_noise_traders)
-        if str(group.group_composition or "").strip().lower() == "hybrid" and bool(group.noise_trader_present)
-        else 0
-    )
+    force_single_nt = _should_force_nt_for_group(group)
+    num_noise_traders = 0
+    if force_single_nt and bool(group.noise_trader_present):
+        num_noise_traders = 1
+    elif str(group.group_composition or "").strip().lower() == "hybrid" and bool(group.noise_trader_present):
+        num_noise_traders = max(0, hybrid_noise_traders)
     num_days = _resolve_num_days(cfg)
     day_duration_minutes = _resolve_day_duration_minutes(cfg, C.DEFAULT_TRADING_DAY_DURATION)
     all_dividends = [float(x) for x in C.DIVIDEND_SCHEDULE]

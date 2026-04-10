@@ -17,6 +17,7 @@ from soft_grouping import (
     preferred_players_per_group,
     realized_group_size_for_player,
     session_planned_participant_count,
+    should_force_nt_for_remainder_group,
     soft_group_matching_enabled,
 )
 
@@ -445,6 +446,23 @@ def _set_group_treatment(group: Group, treatment: str):
     group.group_composition = C.TREATMENT_GROUP_COMPOSITION[treatment_value]
 
 
+def _hybrid_equivalent_treatment(treatment: str):
+    treatment_value = str(treatment or "").strip().lower()
+    return {
+        "gh": "gm",
+        "nh": "nm",
+        "gm": "gm",
+        "nm": "nm",
+    }.get(treatment_value, "gm")
+
+
+def _assign_group_treatment(group: Group, treatment: str):
+    _set_group_treatment(group, treatment)
+    preferred_size = preferred_players_per_group(group.session.config, C.DEFAULT_GROUP_SIZE)
+    if should_force_nt_for_remainder_group(group.session.config, group.realized_group_size, preferred_size):
+        _set_group_treatment(group, _hybrid_equivalent_treatment(group.treatment))
+
+
 def _build_intro_group_matrix(subsession):
     players = sorted(subsession.get_players(), key=lambda player: player.id_in_subsession)
     if not players:
@@ -464,7 +482,7 @@ def _assign_intro_group_metadata(subsession):
     for match_id, group in enumerate(subsession.get_groups(), start=1):
         players_in_group = list(group.get_players())
         group.realized_group_size = len(players_in_group)
-        _set_group_treatment(group, next(treatment_cycle))
+        _assign_group_treatment(group, next(treatment_cycle))
         for player in players_in_group:
             player.condition = group.treatment
             player.participant.vars["condition"] = group.treatment
