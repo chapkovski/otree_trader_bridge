@@ -462,12 +462,6 @@ class Payoff(Page):
         )
 
 
-class PilotFeedback(SurveyJSPage):
-    @staticmethod
-    def is_displayed(player: Player):
-        return player.round_number == C.NUM_ROUNDS
-
-
 class FinalForProlific(Page):
     @staticmethod
     def is_displayed(player: Player):
@@ -495,6 +489,5 @@ page_sequence = [
     LabContact,
     Demographics,
     Payoff,
-    PilotFeedback,
     FinalForProlific,
 ]
