@@ -60,7 +60,7 @@ class C(BaseConstants):
     """
 
     NAME_IN_URL = "trader_bridge"
-    PLAYERS_PER_GROUP = max(2, int(os.getenv("PLAYERS_PER_GROUP", 2)))
+    PLAYERS_PER_GROUP = None
     NUM_MARKETS = max(1, int(os.getenv("NUM_MARKETS", 2)))
     DAYS_PER_MARKET = max(1, int(os.getenv("DAYS_PER_MARKET", 2)))
     NUM_ROUNDS = int(os.getenv("NUM_ROUNDS", NUM_MARKETS * DAYS_PER_MARKET))
@@ -77,7 +77,7 @@ class C(BaseConstants):
     DEFAULT_INITIAL_STOCKS = 20
     DEFAULT_ALERT_STREAK_FREQUENCY = 3
     DEFAULT_ALERT_WINDOW_SIZE = 5
-    DEFAULT_GROUP_SIZE = PLAYERS_PER_GROUP
+    DEFAULT_GROUP_SIZE = max(2, int(os.getenv("PLAYERS_PER_GROUP", 2)))
     DEFAULT_HYBRID_NOISE_TRADERS = 1
 
     DEFAULT_HYBRID_NOISE_TRADER_PROBABILITY = 0.2

@@ -13,6 +13,7 @@ class Group(BaseGroup):
     trading_ws_base = models.StringField(blank=True)
     trading_init_error = models.LongStringField(blank=True)
     trading_day_duration_minutes = models.IntegerField(initial=C.DEFAULT_TRADING_DAY_DURATION)
+    realized_group_size = models.IntegerField(initial=0)
     treatment = models.StringField(initial="gh")
     market_design = models.StringField(initial="gamified")
     group_composition = models.StringField(initial="human_only")

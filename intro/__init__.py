@@ -11,6 +11,14 @@ from sqlalchemy.inspection import inspect
 import itertools
 from user_agents import parse
 import yaml
+from soft_grouping import (
+    build_sequential_group_matrix,
+    build_soft_group_matrix,
+    preferred_players_per_group,
+    realized_group_size_for_player,
+    session_planned_participant_count,
+    soft_group_matching_enabled,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -177,7 +185,8 @@ def _forecast_schedule_text(n_days):
 def _experiment_params(player: "Player"):
     cfg = player.session.config
     num_markets = max(1, _as_int(cfg.get("num_markets", C.DEFAULT_NUM_MARKETS), C.DEFAULT_NUM_MARKETS))
-    num_human_traders = max(1, _as_int(cfg.get("players_per_group", C.DEFAULT_GROUP_SIZE), C.DEFAULT_GROUP_SIZE))
+    preferred_size = preferred_players_per_group(cfg, C.DEFAULT_GROUP_SIZE)
+    num_human_traders = realized_group_size_for_player(player, preferred_size)
     other_human_traders = max(0, num_human_traders - 1)
     days_per_market = max(
         1,
@@ -373,7 +382,7 @@ class SurveyJSPage(Page):
 
 class C(BaseConstants):
     NAME_IN_URL = 'intro'
-    PLAYERS_PER_GROUP = max(2, int(os.getenv("PLAYERS_PER_GROUP", 2)))
+    PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
     TREATMENTS = ("gh", "nh", "gm", "nm")
     WEIGHTED_TREATMENT_SEQUENCE = ("gh", "gh", "nh", "nh", "gm", "nm")
@@ -395,7 +404,7 @@ class C(BaseConstants):
     DEFAULT_FORECAST_BONUS_AMOUNT = 1
     DEFAULT_FORECAST_BONUS_THRESHOLD_PCT = 1
     DEFAULT_HYBRID_NOISE_TRADERS = 1
-    DEFAULT_GROUP_SIZE = PLAYERS_PER_GROUP
+    DEFAULT_GROUP_SIZE = max(2, int(os.getenv("PLAYERS_PER_GROUP", 2)))
     DEFAULT_DIVIDEND_VALUES = (0, 4, 8, 20)
     DEFAULT_HUMAN_TRADER_ENDOWMENTS = (
         (2600.0, 20),
@@ -411,6 +420,7 @@ class Group(BaseGroup):
     treatment = models.StringField(initial="gh")
     market_design = models.StringField(initial="gamified")
     group_composition = models.StringField(initial="human_only")
+    realized_group_size = models.IntegerField(initial=0)
 
 
 def _parse_treatments(raw_value):
@@ -435,21 +445,43 @@ def _set_group_treatment(group: Group, treatment: str):
     group.group_composition = C.TREATMENT_GROUP_COMPOSITION[treatment_value]
 
 
-def creating_session(subsession):
-    if subsession.round_number != 1:
-        return
+def _build_intro_group_matrix(subsession):
+    players = sorted(subsession.get_players(), key=lambda player: player.id_in_subsession)
+    if not players:
+        return []
     if bool(subsession.session.config.get("temporary_singleton_groups", False)):
-        players = sorted(subsession.get_players(), key=lambda p: p.id_in_subsession)
-        subsession.set_group_matrix([[player] for player in players])
+        return [[player] for player in players]
+
+    preferred_size = preferred_players_per_group(subsession.session.config, C.DEFAULT_GROUP_SIZE)
+    if soft_group_matching_enabled(subsession.session.config):
+        planned_count = session_planned_participant_count(subsession.session, fallback=len(players))
+        return build_soft_group_matrix(players, preferred_size, planned_count)
+    return build_sequential_group_matrix(players, preferred_size)
+
+
+def _assign_intro_group_metadata(subsession):
     treatment_cycle = itertools.cycle(_parse_treatments(subsession.session.config.get("treatments")))
-    for group in subsession.get_groups():
+    for match_id, group in enumerate(subsession.get_groups(), start=1):
+        players_in_group = list(group.get_players())
+        group.realized_group_size = len(players_in_group)
         _set_group_treatment(group, next(treatment_cycle))
-        for player in group.get_players():
+        for player in players_in_group:
             player.condition = group.treatment
             player.participant.vars["condition"] = group.treatment
             player.participant.vars["treatment"] = group.treatment
             player.participant.vars["market_design"] = group.market_design
             player.participant.vars["group_composition"] = group.group_composition
+            player.participant.vars["intro_group_match_id"] = match_id
+            player.participant.vars["realized_group_size"] = group.realized_group_size
+
+
+def creating_session(subsession):
+    if subsession.round_number != 1:
+        return
+    group_matrix = _build_intro_group_matrix(subsession)
+    if group_matrix:
+        subsession.set_group_matrix(group_matrix)
+    _assign_intro_group_metadata(subsession)
 
 
 class Player(BasePlayer):

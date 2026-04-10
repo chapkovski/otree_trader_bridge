@@ -29,7 +29,7 @@ def _load_local_env():
 
 _load_local_env()
 
-_BASE_PLAYERS_PER_GROUP = max(2, int(environ.get("PLAYERS_PER_GROUP", 2)))
+_BASE_PREFERRED_PLAYERS_PER_GROUP = max(2, int(environ.get("PLAYERS_PER_GROUP", 2)))
 _BASE_TREATMENTS = ["gh", "gh", "nh", "nh", "gm", "nm"]
 _ALL_HYBRID_TREATMENTS = ["gm", "gm", "nm", "nm", "gm", "nm"]
 
@@ -40,7 +40,8 @@ TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE = False
 # Remove this block after timing/debugging is finished.
 TEMP_ALL_HYBRID_MARKETS = False
 
-PLAYERS_PER_GROUP = None if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else _BASE_PLAYERS_PER_GROUP
+PREFERRED_PLAYERS_PER_GROUP = 1 if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else _BASE_PREFERRED_PLAYERS_PER_GROUP
+PLAYERS_PER_GROUP = None
 SESSION_TREATMENTS = (
     _ALL_HYBRID_TREATMENTS
     if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE
@@ -50,7 +51,7 @@ HYBRID_NOISE_TRADER_PROBABILITY = 1 if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else 
 TEMP_SINGLETON_GROUPS = bool(TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE)
 
 # App defaults still read PLAYERS_PER_GROUP from env for display/default logic.
-environ["PLAYERS_PER_GROUP"] = "1" if TEMP_SINGLE_PLAYER_ALL_NT_TEST_MODE else str(_BASE_PLAYERS_PER_GROUP)
+environ["PLAYERS_PER_GROUP"] = str(PREFERRED_PLAYERS_PER_GROUP)
 
 ROOMS = [
     dict(
@@ -64,7 +65,9 @@ SESSION_CONFIGS = [
         name="intro_only",
         display_name="Intro Only",
         num_demo_participants=12,
-        players_per_group=PLAYERS_PER_GROUP,
+        players_per_group=PREFERRED_PLAYERS_PER_GROUP,
+        preferred_players_per_group=PREFERRED_PLAYERS_PER_GROUP,
+        soft_group_matching_enabled=False,
         temporary_singleton_groups=TEMP_SINGLETON_GROUPS,
         show_intro_video_page=True,
         app_sequence=["intro"],
@@ -74,7 +77,9 @@ SESSION_CONFIGS = [
         use_browser_bots=False,
         display_name="Trader Bridge Demo",
         num_demo_participants=12,
-        players_per_group=PLAYERS_PER_GROUP,
+        players_per_group=PREFERRED_PLAYERS_PER_GROUP,
+        preferred_players_per_group=PREFERRED_PLAYERS_PER_GROUP,
+        soft_group_matching_enabled=False,
         temporary_singleton_groups=TEMP_SINGLETON_GROUPS,
         app_sequence=["trader_bridge_app"],
         trading_api_base=environ.get("TRADING_API_BASE", "http://localhost:8001"),
@@ -97,7 +102,9 @@ SESSION_CONFIGS = [
         name="post_exp_only",
         display_name="Post-Experiment Only",
         num_demo_participants=2,
-        players_per_group=PLAYERS_PER_GROUP,
+        players_per_group=PREFERRED_PLAYERS_PER_GROUP,
+        preferred_players_per_group=PREFERRED_PLAYERS_PER_GROUP,
+        soft_group_matching_enabled=False,
         temporary_singleton_groups=TEMP_SINGLETON_GROUPS,
         show_lab_contact_page=True,
         app_sequence=["post_exp"],
@@ -106,7 +113,9 @@ SESSION_CONFIGS = [
         name="full_study",
         display_name="Full Study (Intro + Market + Post)",
         num_demo_participants=12,
-        players_per_group=PLAYERS_PER_GROUP,
+        players_per_group=PREFERRED_PLAYERS_PER_GROUP,
+        preferred_players_per_group=PREFERRED_PLAYERS_PER_GROUP,
+        soft_group_matching_enabled=False,
         temporary_singleton_groups=TEMP_SINGLETON_GROUPS,
         show_intro_video_page=True,
         show_lab_contact_page=True,
@@ -138,6 +147,8 @@ SESSION_CONFIG_DEFAULTS = dict(
     trading_day_duration=1,
     forecast_bonus_amount=20,
     forecast_bonus_threshold_pct=5,
+    preferred_players_per_group=PREFERRED_PLAYERS_PER_GROUP,
+    soft_group_matching_enabled=False,
     dividend_values=[0, 4, 8, 20],
     show_intro_video_page=True,
     show_lab_contact_page=True,

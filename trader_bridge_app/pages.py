@@ -10,6 +10,15 @@ from otree.api import Currency as cu
 from otree.api import WaitPage
 from otree.api import Page as oTreePage
 import yaml
+from soft_grouping import (
+    build_sequential_group_matrix,
+    build_soft_group_matrix,
+    group_matrix_from_participant_match_id,
+    preferred_players_per_group,
+    realized_group_size_for_player,
+    session_planned_participant_count,
+    soft_group_matching_enabled,
+)
 
 from .constants import C
 from .models import Group, Player, Subsession
@@ -148,7 +157,8 @@ def _instruction_context(player):
     cfg = player.session.config
     num_markets = max(1, _as_int(cfg.get("num_markets", C.NUM_MARKETS), C.NUM_MARKETS))
     num_days = max(1, _as_int(cfg.get("num_days", C.DAYS_PER_MARKET), C.DAYS_PER_MARKET))
-    num_human_traders = max(1, _as_int(cfg.get("players_per_group", C.DEFAULT_GROUP_SIZE), C.DEFAULT_GROUP_SIZE))
+    preferred_size = preferred_players_per_group(cfg, C.DEFAULT_GROUP_SIZE)
+    num_human_traders = realized_group_size_for_player(player, preferred_size)
     other_human_traders = max(0, num_human_traders - 1)
     day_duration = _resolve_day_duration_minutes(cfg, C.DEFAULT_TRADING_DAY_DURATION)
     market_total_minutes = num_days * day_duration
@@ -238,6 +248,7 @@ def creating_session(subsession: Subsession):
         for group in subsession.get_groups():
             round_1_group = group.in_round(1)
             group.trading_day_duration_minutes = configured_day_duration
+            group.realized_group_size = _as_int(round_1_group.realized_group_size, len(group.get_players()))
             group.treatment = round_1_group.treatment
             group.market_design = round_1_group.market_design
             group.group_composition = round_1_group.group_composition
@@ -259,6 +270,7 @@ def creating_session(subsession: Subsession):
                 )
                 player.participant.vars["assigned_initial_cash"] = player.assigned_initial_cash
                 player.participant.vars["assigned_initial_shares"] = player.assigned_initial_shares
+                player.participant.vars["realized_group_size"] = group.realized_group_size
         _log("creating_session copied group matrix + treatments from round 1", round_number=subsession.round_number)
         return
 
@@ -269,11 +281,16 @@ def creating_session(subsession: Subsession):
 
     _log("creating_session players loaded", player_ids=[p.id_in_subsession for p in players], num_players=len(players))
 
+    group_matrix = _build_market_group_matrix(subsession, players)
+    if group_matrix:
+        subsession.set_group_matrix(group_matrix)
+
     configured_treatments = _parse_treatments(subsession.session.config.get("treatments"))
     groups = subsession.get_groups()
     for idx, group in enumerate(groups):
         group.trading_day_duration_minutes = configured_day_duration
         players_in_group = group.get_players()
+        group.realized_group_size = len(players_in_group)
         intro_treatment = ""
         if players_in_group:
             intro_treatment = str(players_in_group[0].participant.vars.get("treatment", "") or "").strip().lower()
@@ -287,6 +304,7 @@ def creating_session(subsession: Subsession):
             player.participant.vars["treatment"] = group.treatment
             player.participant.vars["market_design"] = group.market_design
             player.participant.vars["group_composition"] = group.group_composition
+            player.participant.vars["realized_group_size"] = group.realized_group_size
             _assign_payable_market(player)
             player.participant.vars.setdefault("cumulative_bonuses", cu(0))
         _assign_player_endowments(group)
@@ -310,6 +328,24 @@ def _parse_treatments(raw_value):
         return list(C.TREATMENTS)
     filtered = [x for x in candidate_values if x in C.TREATMENTS]
     return filtered or list(C.TREATMENTS)
+
+
+def _build_market_group_matrix(subsession: Subsession, players):
+    ordered_players = sorted(list(players or []), key=lambda player: player.id_in_subsession)
+    if not ordered_players:
+        return []
+    if bool(subsession.session.config.get("temporary_singleton_groups", False)):
+        return [[player] for player in ordered_players]
+
+    intro_matrix = group_matrix_from_participant_match_id(ordered_players)
+    if intro_matrix:
+        return intro_matrix
+
+    preferred_size = preferred_players_per_group(subsession.session.config, C.DEFAULT_GROUP_SIZE)
+    if soft_group_matching_enabled(subsession.session.config):
+        planned_count = session_planned_participant_count(subsession.session, fallback=len(ordered_players))
+        return build_soft_group_matrix(ordered_players, preferred_size, planned_count)
+    return build_sequential_group_matrix(ordered_players, preferred_size)
 
 
 def _set_group_treatment(group: Group, treatment: str):
@@ -415,9 +451,12 @@ def _trade_page_log_context(player: Player):
 
 def _players_in_group(player: Player):
     try:
+        realized_size = getattr(player.group, "realized_group_size", None)
+        if realized_size not in (None, "", 0):
+            return _as_int(realized_size, len(player.group.get_players()))
         return len(player.group.get_players())
     except Exception:
-        return _as_int(player.session.config.get("players_per_group"), 0)
+        return preferred_players_per_group(player.session.config, C.DEFAULT_GROUP_SIZE)
 
 
 def _initial_trader_state(player: Player):
