@@ -118,6 +118,15 @@ def assign_total_payoff(player):
     )
 
 
+def rounded_currency_for_display(value, places=2):
+    if value in (None, ""):
+        return cu(0)
+    try:
+        return cu(round(float(value), places))
+    except Exception:
+        return cu(0)
+
+
 def process_survey_data(player, survey_results):
     mapper = inspect(player.__class__)
 
@@ -427,7 +436,7 @@ class Payoff(Page):
     @staticmethod
     def vars_for_template(player: Player):
         payoff_parts = assign_total_payoff(player)
-        trade_payoff = payoff_parts["trade_payoff"]
+        trade_payoff = rounded_currency_for_display(payoff_parts["trade_payoff"])
         quiz_payoff = payoff_parts["quiz_payoff"]
         bonus_total = payoff_parts["bonus_total"]
         total_points = payoff_parts["total"]
@@ -435,8 +444,8 @@ class Payoff(Page):
         exchange_rate = player.session.config.get("real_world_currency_per_point", 1)
         participation_fee = player.session.config.get("participation_fee", 0)
         total_markets = max(1, int(player.session.config.get("num_markets", 2) or 2))
-        cash_bonus = total_points * exchange_rate
-        total_real = cash_bonus + participation_fee
+        cash_bonus = total_points.to_real_world_currency(player.session)
+        total_real = player.session._get_payoff_plus_participation_fee(total_points)
         return dict(
             trade_payoff=trade_payoff,
             quiz_payoff=quiz_payoff,
