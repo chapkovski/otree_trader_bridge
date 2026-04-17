@@ -144,7 +144,7 @@ SESSION_CONFIGS = [
 
 
 SESSION_CONFIG_DEFAULTS = dict(
-    real_world_currency_per_point=1.00,
+    real_world_currency_per_point=0.002,
     participation_fee=0.00,
     fee_per_correct_answer=10,
     hybrid_noise_trader_probability=0.2,
